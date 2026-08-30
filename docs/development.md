@@ -33,7 +33,7 @@ Launch PiDesk, copy the reported PID, then run:
 ./ui-tests.ps1 -AppPid <PID>
 ```
 
-The test sends one small prompt through the selected model and may incur a small provider charge. It verifies connection, model and thinking controls, the composer, a streamed assistant response, settled state, usage reporting, and AutomationId coverage.
+The test sends one small prompt through the selected model and may incur a small provider charge. It verifies connection, model and thinking controls, the composer, a streamed assistant response, settled state, usage reporting, and AutomationId coverage. Generated results and screenshots are written under `artifacts/ui-tests/`; the repository keeps only deliberately reviewed evidence under `docs/evidence/` and `docs/images/`.
 
 ## Diagnostic output
 

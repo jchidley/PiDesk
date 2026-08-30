@@ -56,9 +56,10 @@ if ($missingIds.Count -eq 0) {
     $results += @{ name = 'Interactive controls have AutomationIds'; status = 'FAIL'; detail = (($missingIds | ForEach-Object name) -join ', ') }
 }
 
-New-Item -ItemType Directory -Force -Path "$PSScriptRoot\screenshots" | Out-Null
-winapp ui screenshot -a $AppPid -o "$PSScriptRoot\screenshots\03-conversation.png" 2>$null | Out-Null
-$results | ConvertTo-Json | Set-Content "$PSScriptRoot\test-results.json"
+$artifactDirectory = Join-Path $PSScriptRoot 'artifacts\ui-tests'
+New-Item -ItemType Directory -Force -Path $artifactDirectory | Out-Null
+winapp ui screenshot -a $AppPid -o (Join-Path $artifactDirectory 'conversation.png') 2>$null | Out-Null
+$results | ConvertTo-Json | Set-Content (Join-Path $artifactDirectory 'test-results.json')
 Write-Host "Passed: $pass | Failed: $fail"
 $results | Where-Object status -eq 'FAIL' | ForEach-Object { Write-Host "FAIL: $($_.name) - $($_.detail)" -ForegroundColor Red }
 if ($fail -gt 0) { exit 1 }
