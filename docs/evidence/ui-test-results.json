@@ -1,0 +1,46 @@
+[
+  {
+    "name": "Pi connects and becomes ready",
+    "status": "PASS"
+  },
+  {
+    "name": "Project picker is available",
+    "status": "PASS"
+  },
+  {
+    "name": "Model selector is populated",
+    "status": "PASS"
+  },
+  {
+    "name": "Thinking selector is populated",
+    "status": "PASS"
+  },
+  {
+    "name": "Composer accepts text",
+    "status": "PASS"
+  },
+  {
+    "name": "Send enables for a non-empty prompt",
+    "status": "PASS"
+  },
+  {
+    "name": "Prompt can be sent",
+    "status": "PASS"
+  },
+  {
+    "name": "Assistant response is shown",
+    "status": "PASS"
+  },
+  {
+    "name": "Agent run settles",
+    "status": "PASS"
+  },
+  {
+    "name": "Session usage is updated",
+    "status": "PASS"
+  },
+  {
+    "name": "Interactive controls have AutomationIds",
+    "status": "PASS"
+  }
+]

@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="PiDesk.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:PiDesk"
+    xmlns:models="using:PiDesk.Models"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <Style x:Key="ConversationItemStyle" TargetType="ListViewItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+        </Style>
+    </Page.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid
+            Padding="20,12"
+            Background="{ThemeResource LayerFillColorDefaultBrush}"
+            ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="220" />
+                <ColumnDefinition Width="130" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Button
+                x:Name="FolderButton"
+                AutomationProperties.AutomationId="FolderButton"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Left"
+                AutomationProperties.Name="Choose project folder"
+                Click="FolderButton_Click"
+                ToolTipService.ToolTip="Choose the project Pi can work in">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon FontSize="16" Glyph="&#xE8B7;" />
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="PROJECT" />
+                        <TextBlock
+                            MaxWidth="520"
+                            Text="{x:Bind ViewModel.WorkingDirectory, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </StackPanel>
+            </Button>
+
+            <ComboBox
+                Grid.Column="1"
+                AutomationProperties.AutomationId="ModelCombo"
+                AutomationProperties.Name="Model"
+                DisplayMemberPath="DisplayName"
+                Header="Model"
+                ItemsSource="{x:Bind ViewModel.Models, Mode=OneWay}"
+                SelectedItem="{x:Bind ViewModel.SelectedModel, Mode=TwoWay}" />
+
+            <ComboBox
+                Grid.Column="2"
+                AutomationProperties.AutomationId="ThinkingCombo"
+                AutomationProperties.Name="Thinking level"
+                Header="Thinking"
+                ItemsSource="{x:Bind ViewModel.ThinkingLevels, Mode=OneWay}"
+                SelectedItem="{x:Bind ViewModel.SelectedThinkingLevel, Mode=TwoWay}" />
+
+            <Button
+                Grid.Column="3"
+                VerticalAlignment="Bottom"
+                AutomationProperties.AutomationId="NewSessionButton"
+                AutomationProperties.Name="Start new session"
+                Command="{x:Bind ViewModel.NewSessionCommand}"
+                ToolTipService.ToolTip="Start a fresh persistent Pi session">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon FontSize="14" Glyph="&#xE710;" />
+                    <TextBlock Text="New session" />
+                </StackPanel>
+            </Button>
+        </Grid>
+
+        <InfoBar
+            Grid.Row="1"
+            Margin="20,12,20,0"
+            IsClosable="False"
+            IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
+            Message="{x:Bind ViewModel.ErrorText, Mode=OneWay}"
+            Severity="Error"
+            Title="PiDesk needs attention" />
+
+        <Grid Grid.Row="2">
+            <StackPanel
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="12"
+                Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.IsEmpty), Mode=OneWay}">
+                <FontIcon
+                    HorizontalAlignment="Center"
+                    FontSize="40"
+                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                    Glyph="&#xE8BD;" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource TitleTextBlockStyle}"
+                    Text="What are we building?" />
+                <TextBlock
+                    MaxWidth="520"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="Pi can read, edit, and run tools in the selected project. Describe the outcome you want, then let it work."
+                    TextAlignment="Center"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+
+            <ListView
+                x:Name="ConversationList"
+                Margin="20,16"
+                AutomationProperties.AutomationId="ConversationList"
+                AutomationProperties.Name="Conversation"
+                IsItemClickEnabled="False"
+                ItemContainerStyle="{StaticResource ConversationItemStyle}"
+                ItemsSource="{x:Bind ViewModel.Messages, Mode=OneWay}"
+                SelectionMode="None">
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="models:ChatMessage">
+                        <Border
+                            Padding="16,12"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="28" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon
+                                    VerticalAlignment="Top"
+                                    FontSize="16"
+                                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                    Glyph="{x:Bind Glyph, Mode=OneWay}" />
+                                <StackPanel Grid.Column="1" Spacing="4">
+                                    <TextBlock
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="{x:Bind Role, Mode=OneWay}" />
+                                    <TextBlock
+                                        FontFamily="{x:Bind local:MainPage.MessageFont(IsActivity), Mode=OneWay}"
+                                        IsTextSelectionEnabled="True"
+                                        Text="{x:Bind Text, Mode=OneWay}"
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Grid>
+
+        <Border
+            Grid.Row="3"
+            Margin="20,0,20,12"
+            Padding="12"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="{ThemeResource ControlCornerRadius}">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox
+                    x:Name="PromptBox"
+                    AutomationProperties.AutomationId="PromptBox"
+                    MinHeight="72"
+                    MaxHeight="180"
+                    AcceptsReturn="True"
+                    AutomationProperties.Name="Message Pi"
+                    Header="Message Pi"
+                    KeyDown="PromptBox_KeyDown"
+                    PlaceholderText="Describe a task…  (Ctrl+Enter to send)"
+                    Text="{x:Bind ViewModel.PromptText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    TextWrapping="Wrap" />
+                <Button
+                    Grid.Column="1"
+                    VerticalAlignment="Bottom"
+                    AutomationProperties.AutomationId="StopButton"
+                    AutomationProperties.Name="Stop Pi"
+                    Command="{x:Bind ViewModel.AbortCommand}"
+                    ToolTipService.ToolTip="Stop the current run and clear queued messages">
+                    <FontIcon Glyph="&#xE71A;" />
+                </Button>
+                <Button
+                    Grid.Column="2"
+                    MinWidth="92"
+                    VerticalAlignment="Bottom"
+                    AutomationProperties.AutomationId="SendButton"
+                    AutomationProperties.Name="Send message"
+                    Command="{x:Bind ViewModel.SendCommand}"
+                    Style="{StaticResource AccentButtonStyle}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ProgressRing
+                            Width="16"
+                            Height="16"
+                            IsActive="{x:Bind ViewModel.IsStreaming, Mode=OneWay}"
+                            Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.IsStreaming), Mode=OneWay}" />
+                        <TextBlock Text="{x:Bind ViewModel.SendButtonText, Mode=OneWay}" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </Border>
+
+        <Grid
+            Grid.Row="4"
+            Padding="20,7"
+            Background="{ThemeResource LayerFillColorDefaultBrush}"
+            ColumnSpacing="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock
+                VerticalAlignment="Center"
+                AutomationProperties.AutomationId="StatusText"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" />
+            <TextBlock
+                Grid.Column="2"
+                VerticalAlignment="Center"
+                AutomationProperties.AutomationId="SessionText"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="{x:Bind ViewModel.SessionSummary, Mode=OneWay}" />
+            <TextBlock
+                Grid.Column="3"
+                VerticalAlignment="Center"
+                AutomationProperties.AutomationId="UsageText"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="{x:Bind ViewModel.UsageSummary, Mode=OneWay}" />
+        </Grid>
+    </Grid>
+</Page>

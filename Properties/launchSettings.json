@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "PiDesk (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "PiDesk (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
