@@ -6,7 +6,7 @@ Work must proceed in milestone order. Visual polish must not outrun protocol cor
 
 ## Current status
 
-**Current milestone:** Milestone 2 — Sessions and branching (entry investigation complete; blocked on upstream RPC listing and navigation)
+**Current milestone:** Milestone 2 — Sessions and branching (minimum upstream RPC delta scoped; blocked until listing and navigation ship upstream)
 
 Milestones 0 and 1 are complete against Pi 0.84.4. The shared transport is bounded and generation-safe; `PiSessionService` owns typed protocol and lifecycle handling, atomic snapshots, candidate project replacement, prompt acceptance, queue recovery, serialized state-changing commands, and generation-safe latest-selection-wins selectors. Conversation rendering reduces only typed RPC activity into distinct user, assistant, thinking, tool, diff, retry, compaction, and error presentation models. It correlates interleaved argument streams, restores thinking, tool arguments/results, and diffs from typed `get_messages`, exposes expandable selectable detail surfaces with bounded automation summaries, and defers collapsed detail creation so a 10,000-line output remains one responsive control. Markdown headings, lists, emphasis, inline code, and fenced code are rendered under a documented side-effect-free link/image/HTML policy. The deterministic protocol suite has 45 tests. A retained 17-scenario fake-RPC UI run covers keyboard expansion, streaming and final tool states, edit diffs, failed tools, selection/copy, bounded automation names, 10,000-line output and Stop responsiveness, safe Markdown, and clean shutdown; the earlier retained 16-scenario real-Pi smoke continues to cover startup, selectors, prompt/settle, abort, new session, project replacement, and parent/child shutdown.
 
@@ -191,6 +191,27 @@ Investigation completed against the installed Pi 0.84.4 documentation, declarati
 - `SessionManager.list(cwd)` is the supported current-project discovery API and is tested with isolated temporary storage, but **Pi 0.84.4 exposes no session-listing RPC command**. Its RPC surface contains `switch_session` but requires a path the client cannot discover through RPC.
 
 **Decision:** do not build a PiDesk session-file parser or inspect `~/.pi/agent/sessions`. That would couple PiDesk to Pi-owned persistence, duplicate `SessionManager` policy, and violate the process boundary. Before session-browser UI work, secure upstream RPC support for (1) current-project session listing with the existing `SessionInfo` fields and (2) `navigate_tree` with `targetId`, summary options, and the tested `editorText`/cancellation result. The fallback is to keep Milestone 2 blocked on Pi 0.84.4 rather than silently weaken the boundary. Naming, export, fork, clone, and read-only tree protocol adapters may be developed and tested independently, but they do not satisfy the milestone without those two commands.
+
+#### Minimum upstream RPC delta
+
+The appropriate upstream change is two additive commands over existing domain APIs. It does not require a new session index, a projected tree model, new label/delete/rename operations, or changes to session persistence.
+
+- `list_sessions` takes no path or scope from the client. The RPC host calls `SessionManager.list(session.sessionManager.getCwd(), session.sessionManager.getSessionDir())`, preserving Pi's current-project and configured-storage policy. It returns `{ sessions }` with every existing `SessionInfo` field: `path`, `id`, `cwd`, optional `name`, optional `parentSessionPath`, `created`, `modified`, `messageCount`, `firstMessage`, and `allMessagesText`. The wire type defines `created` and `modified` as ISO 8601 strings rather than leaking in-process `Date` types. It must not expose `listAll`, accept an arbitrary directory, or make the client inspect storage.
+- `navigate_tree` accepts `targetId` plus the existing optional `summarize`, `customInstructions`, `replaceInstructions`, and `label` values. The handler picks those fields explicitly and calls `session.navigateTree`; it does not manipulate `SessionManager` directly. Its response returns `cancelled` and optional `editorText`, with optional `aborted` retained when branch summarization is aborted. A cancelled result remains a successful RPC outcome and leaves the active leaf unchanged. Errors such as an unknown target remain ordinary failed RPC responses. After a non-cancelled result, clients use the existing `get_messages`, `get_entries`, and `get_tree` commands to obtain the authoritative replacement snapshot.
+
+The official TypeScript RPC client should add matching `listSessions()` and `navigateTree()` methods, and `rpc.md` should document the command and response shapes. This is the smallest coherent patch to `rpc-types.ts`, `rpc-mode.ts`, `rpc-client.ts`, documentation, and focused tests. The existing raw `get_tree` response already contains all branches, resolved labels, and `leafId`; replacing it with a second projected tree contract would add risk without removing either blocker.
+
+Upstream history supports keeping this patch narrow. The unmerged browsing PR [#1762](https://github.com/earendil-works/pi/pull/1762) combined listing/navigation with a projected tree schema, label mutation, branch-summary abort, shared formatting, and session-location changes; it was closed while a broader RPC refactor was planned. Issue [#8645](https://github.com/earendil-works/pi/issues/8645) independently confirms that `navigate_tree` remains absent after read-only `get_tree` shipped. Neither tagged v0.84.4 nor upstream `main` currently contains `list_sessions` or `navigate_tree`.
+
+Required upstream evidence is deterministic and storage-isolated:
+
+- create persisted sessions for two project directories under one temporary session directory, invoke `list_sessions` from one project, and prove only that project's sessions are returned in `SessionManager.list` order with complete fields and ISO timestamps;
+- build a branched temporary session without provider access, navigate to a user entry with `summarize: false`, and prove the response returns its editor text, the active leaf changes as `AgentSession.navigateTree` specifies, and abandoned entries remain present;
+- install a temporary test extension that cancels `session_before_tree`, then prove `navigate_tree` returns `{ cancelled: true }` and neither entries nor `leafId` change;
+- send an unknown `targetId` and prove a failed response is correlated to the request without mutating the session;
+- retain the existing `AgentSession` tests as the authority for summarization, custom instructions, labels, and abort behavior rather than duplicating model-backed behavior in RPC tests.
+
+Tests must set up and remove their own temporary project and session directories. They must not use the default agent directory, enumerate the user's sessions, require credentials, or make a provider request.
 
 ### Implementation
 
