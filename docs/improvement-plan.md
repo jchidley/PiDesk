@@ -6,7 +6,7 @@ Work must proceed in milestone order. Visual polish must not outrun protocol cor
 
 ## Current status
 
-**Current milestone:** Milestone 2 — Sessions and branching
+**Current milestone:** Milestone 2 — Sessions and branching (entry investigation complete; blocked on upstream RPC listing and navigation)
 
 Milestones 0 and 1 are complete against Pi 0.84.4. The shared transport is bounded and generation-safe; `PiSessionService` owns typed protocol and lifecycle handling, atomic snapshots, candidate project replacement, prompt acceptance, queue recovery, serialized state-changing commands, and generation-safe latest-selection-wins selectors. Conversation rendering reduces only typed RPC activity into distinct user, assistant, thinking, tool, diff, retry, compaction, and error presentation models. It correlates interleaved argument streams, restores thinking, tool arguments/results, and diffs from typed `get_messages`, exposes expandable selectable detail surfaces with bounded automation summaries, and defers collapsed detail creation so a 10,000-line output remains one responsive control. Markdown headings, lists, emphasis, inline code, and fenced code are rendered under a documented side-effect-free link/image/HTML policy. The deterministic protocol suite has 45 tests. A retained 17-scenario fake-RPC UI run covers keyboard expansion, streaming and final tool states, edit diffs, failed tools, selection/copy, bounded automation names, 10,000-line output and Stop responsiveness, safe Markdown, and clean shutdown; the earlier retained 16-scenario real-Pi smoke continues to cover startup, selectors, prompt/settle, abort, new session, project replacement, and parent/child shutdown.
 
@@ -182,6 +182,15 @@ Completed with 45 passing deterministic protocol tests, a warning-free x64 analy
 ### Entry investigation
 
 Before implementation, verify switch, fork, clone, naming, export, and tree-navigation semantics against the supported Pi source and tests. Resolve session listing by either securing an upstream RPC command or documenting and testing a read-only index against the supported session format. Record the decision and fallback before building the browser UI.
+
+Investigation completed against the installed Pi 0.84.4 documentation, declarations, compiled source, source maps, and the corresponding upstream session/RPC tests:
+
+- `switch_session` accepts a session-file path, can be cancelled by `session_before_switch`, and rebinds RPC only after successful runtime replacement. `fork` accepts an active-branch user entry, creates a new session before that prompt, and returns the prompt text. `clone` forks at the current leaf and fails for an empty or not-yet-persisted session. Both can be cancelled by `session_before_fork`.
+- `get_entries` returns the append-only history, `get_tree` returns all branches plus resolved labels, and both report the active `leafId`. Pi's tested `navigateTree` operation preserves abandoned entries, optionally appends a branch summary, and returns editor text when selecting a user message, but **Pi 0.84.4 exposes no RPC command for it**.
+- `set_session_name` trims and rejects an empty name; the confirmed name must be read from `get_state`. `export_html` returns the written path but uses an overwriting write, so PiDesk must check the selected destination and obtain explicit overwrite confirmation before sending the command.
+- `SessionManager.list(cwd)` is the supported current-project discovery API and is tested with isolated temporary storage, but **Pi 0.84.4 exposes no session-listing RPC command**. Its RPC surface contains `switch_session` but requires a path the client cannot discover through RPC.
+
+**Decision:** do not build a PiDesk session-file parser or inspect `~/.pi/agent/sessions`. That would couple PiDesk to Pi-owned persistence, duplicate `SessionManager` policy, and violate the process boundary. Before session-browser UI work, secure upstream RPC support for (1) current-project session listing with the existing `SessionInfo` fields and (2) `navigate_tree` with `targetId`, summary options, and the tested `editorText`/cancellation result. The fallback is to keep Milestone 2 blocked on Pi 0.84.4 rather than silently weaken the boundary. Naming, export, fork, clone, and read-only tree protocol adapters may be developed and tested independently, but they do not satisfy the milestone without those two commands.
 
 ### Implementation
 
