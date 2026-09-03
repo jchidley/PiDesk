@@ -5,6 +5,7 @@
 | Task | Command |
 |---|---|
 | Analyzer build | `./BuildAndRun.ps1 . --no-launch --arch x64` |
+| Protocol tests | `dotnet test tests/PiDesk.Tests/PiDesk.Tests.csproj` |
 | Run attached | `./BuildAndRun.ps1` |
 | UI tests | `./ui-tests.ps1 -AppPid <PID>` |
 
@@ -20,6 +21,8 @@ Run commands from the repository root in PowerShell 7. `BuildAndRun.ps1` remains
 ## Boundaries
 
 - Keep Pi's agent loop, credentials, tools, extensions, and session persistence in Pi; PiDesk is a graphical RPC client.
+- Keep protocol handling in `PiDesk.Protocol`; WinUI code consumes typed state and operations rather than raw RPC JSON.
+- Load the relevant `winui-*` skill before WinUI design, implementation, review, testing, or packaging work.
 - Do not commit credentials, session JSONL files, model output, or build/package artifacts.
 - Do not run packaged executables directly; use `BuildAndRun.ps1` or project-mode `winapp run`.
 - GitHub Actions are intentionally disabled until a workflow is explicitly reviewed and enabled.

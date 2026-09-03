@@ -158,6 +158,10 @@
                                         IsTextSelectionEnabled="True"
                                         Text="{x:Bind Text, Mode=OneWay}"
                                         TextWrapping="Wrap" />
+                                    <TextBlock
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="{x:Bind DeliveryStatus, Mode=OneWay}" />
                                 </StackPanel>
                             </Grid>
                         </Border>
@@ -198,7 +202,7 @@
                     AutomationProperties.AutomationId="StopButton"
                     AutomationProperties.Name="Stop Pi"
                     Command="{x:Bind ViewModel.AbortCommand}"
-                    ToolTipService.ToolTip="Stop the current run and clear queued messages">
+                    ToolTipService.ToolTip="Stop the current run and restore queued messages to the composer">
                     <FontIcon Glyph="&#xE71A;" />
                 </Button>
                 <Button

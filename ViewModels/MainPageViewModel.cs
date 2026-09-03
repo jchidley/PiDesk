@@ -1,6 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Text.Json;
-using System.Text.Json.Nodes;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Dispatching;
@@ -12,7 +10,7 @@ namespace PiDesk.ViewModels;
 public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 {
     private readonly DispatcherQueue _dispatcher;
-    private readonly PiRpcClient _rpc = new();
+    private readonly PiSessionService _session = new();
     private ChatMessage? _streamingMessage;
     private bool _syncingSelectors;
 
@@ -20,14 +18,14 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     {
         _dispatcher = dispatcher;
         WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        _rpc.EventReceived += HandleEventAsync;
-        _rpc.ErrorReceived += error => _dispatcher.TryEnqueue(() => ShowError(error));
+        _session.EventReceived += HandleEventAsync;
+        _session.ErrorReceived += error => _dispatcher.TryEnqueue(() => ShowError(error));
     }
 
     public ObservableCollection<ChatMessage> Messages { get; } = [];
     public ObservableCollection<ModelOption> Models { get; } = [];
     public ObservableCollection<string> ThinkingLevels { get; } = [];
-    public Func<JsonElement, Task<JsonObject>>? ExtensionUiHandler { get; set; }
+    public Func<ExtensionUiRequest, Task<ExtensionUiResponse>>? ExtensionUiHandler { get; set; }
 
     public bool IsEmpty => Messages.Count == 0;
     public string SendButtonText => IsStreaming ? "Queue" : "Send";
@@ -94,24 +92,21 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     public async Task RestartAsync(string workingDirectory)
     {
-        IsConnected = false;
-        IsStreaming = false;
+        var hadUsableSession = IsConnected;
         HasError = false;
-        StatusText = "Starting Pi…";
-        WorkingDirectory = workingDirectory;
-        Messages.Clear();
-        NotifyMessagesChanged();
+        StatusText = hadUsableSession ? "Preparing project…" : "Starting Pi…";
 
         try
         {
-            await _rpc.StartAsync(workingDirectory);
+            var snapshot = await _session.StartAsync(workingDirectory);
+            ApplySnapshot(snapshot);
+            WorkingDirectory = workingDirectory;
             IsConnected = true;
-            StatusText = "Loading models…";
-            await LoadStateAsync();
-            StatusText = "Ready";
+            StatusText = IsStreaming ? "Pi is working…" : "Ready";
         }
         catch (Exception ex)
         {
+            IsConnected = hadUsableSession;
             ShowError(ex.Message);
         }
     }
@@ -126,22 +121,21 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         }
 
         PromptText = string.Empty;
-        Messages.Add(new ChatMessage("You", text, "\uE77B"));
+        var message = new ChatMessage(
+            "You", text, "\uE77B", deliveryState: MessageDeliveryState.Pending);
+        Messages.Add(message);
         NotifyMessagesChanged();
-
-        var command = new JsonObject
-        {
-            ["type"] = "prompt",
-            ["message"] = text,
-        };
-        if (IsStreaming)
-        {
-            command["streamingBehavior"] = "steer";
-        }
 
         try
         {
-            await _rpc.SendAsync(command);
+            var receipt = await _session.PromptAsync(text, steer: IsStreaming);
+            message.DeliveryState = receipt.Accepted
+                ? MessageDeliveryState.Accepted
+                : MessageDeliveryState.Failed;
+            if (!receipt.Accepted)
+            {
+                PromptText = PiComposerRecovery.Restore(PromptText, [text]);
+            }
             if (IsStreaming)
             {
                 StatusText = "Message queued to steer the current run";
@@ -149,6 +143,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         }
         catch (Exception ex)
         {
+            message.DeliveryState = MessageDeliveryState.Failed;
+            PromptText = PiComposerRecovery.Restore(PromptText, [text]);
             ShowError(ex.Message);
         }
     }
@@ -158,15 +154,22 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand(CanExecute = nameof(CanAbort))]
     private async Task AbortAsync()
     {
-        try
+        var result = await _session.ClearQueueAndAbortAsync();
+        var restoredCount = result.ClearedQueue.InDeliveryOrder.Count();
+        PromptText = PiComposerRecovery.Restore(PromptText, result.ClearedQueue.InDeliveryOrder);
+
+        if (result.Succeeded)
         {
-            await _rpc.SendAsync(new JsonObject { ["type"] = "clear_queue" });
-            await _rpc.SendAsync(new JsonObject { ["type"] = "abort" });
+            StatusText = restoredCount == 0
+                ? "Stopping Pi…"
+                : $"Stopping Pi… Restored {restoredCount} queued message{(restoredCount == 1 ? string.Empty : "s")}";
+            return;
         }
-        catch (Exception ex)
-        {
-            ShowError(ex.Message);
-        }
+
+        var errors = new[] { result.ClearQueueError, result.AbortError }
+            .Where(error => error is not null)
+            .Select(error => error!.Message);
+        ShowError(string.Join(" ", errors));
     }
 
     private bool CanAbort() => IsStreaming;
@@ -176,12 +179,16 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     {
         try
         {
-            await _rpc.SendAsync(new JsonObject { ["type"] = "new_session" });
-            Messages.Clear();
-            NotifyMessagesChanged();
-            SessionSummary = "New session";
-            UsageSummary = "No usage yet";
-            StatusText = "Ready";
+            var replacement = await _session.NewSessionAsync();
+            if (replacement.Cancelled)
+            {
+                StatusText = "Session change cancelled";
+                return;
+            }
+
+            ApplySnapshot(replacement.Snapshot ?? throw new InvalidOperationException("Pi did not return the new session state."));
+            HasError = false;
+            StatusText = IsStreaming ? "Pi is working…" : "Ready";
         }
         catch (Exception ex)
         {
@@ -189,49 +196,62 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private async Task LoadStateAsync()
+    private void ApplySnapshot(PiSessionSnapshot snapshot)
     {
-        var modelsResponse = await _rpc.SendAsync(new JsonObject { ["type"] = "get_available_models" });
-        var stateResponse = await _rpc.SendAsync(new JsonObject { ["type"] = "get_state" });
-        var thinkingResponse = await _rpc.SendAsync(new JsonObject { ["type"] = "get_available_thinking_levels" });
-
         _syncingSelectors = true;
         try
         {
             Models.Clear();
-            foreach (var model in modelsResponse.GetProperty("data").GetProperty("models").EnumerateArray())
+            foreach (var model in snapshot.Models)
             {
-                Models.Add(new ModelOption(
-                    model.GetProperty("provider").GetString() ?? string.Empty,
-                    model.GetProperty("id").GetString() ?? string.Empty,
-                    model.GetProperty("name").GetString() ?? model.GetProperty("id").GetString() ?? "Model"));
+                Models.Add(new ModelOption(model.Provider, model.Id, model.Name));
             }
 
-            var state = stateResponse.GetProperty("data");
-            if (state.TryGetProperty("model", out var currentModel) && currentModel.ValueKind == JsonValueKind.Object)
-            {
-                var provider = currentModel.GetProperty("provider").GetString();
-                var id = currentModel.GetProperty("id").GetString();
-                SelectedModel = Models.FirstOrDefault(model => model.Provider == provider && model.Id == id);
-            }
-
+            SelectedModel = snapshot.State.Model is { } current
+                ? Models.FirstOrDefault(model => model.Provider == current.Provider && model.Id == current.Id)
+                : null;
             ThinkingLevels.Clear();
-            foreach (var level in thinkingResponse.GetProperty("data").GetProperty("levels").EnumerateArray())
+            foreach (var level in snapshot.ThinkingLevels)
             {
-                if (level.GetString() is { } value)
-                {
-                    ThinkingLevels.Add(value);
-                }
+                ThinkingLevels.Add(level);
             }
-            SelectedThinkingLevel = state.GetProperty("thinkingLevel").GetString();
-            SessionSummary = state.TryGetProperty("sessionName", out var name) && !string.IsNullOrWhiteSpace(name.GetString())
-                ? name.GetString()!
-                : $"Session {state.GetProperty("sessionId").GetString()?[..8]}";
+            SelectedThinkingLevel = snapshot.State.ThinkingLevel;
         }
         finally
         {
             _syncingSelectors = false;
         }
+
+        Messages.Clear();
+        foreach (var message in snapshot.Messages)
+        {
+            Messages.Add(ToChatMessage(message));
+        }
+        _streamingMessage = null;
+        NotifyMessagesChanged();
+        IsStreaming = snapshot.State.IsStreaming;
+        SessionSummary = !string.IsNullOrWhiteSpace(snapshot.State.SessionName)
+            ? snapshot.State.SessionName
+            : $"Session {snapshot.State.SessionId[..Math.Min(8, snapshot.State.SessionId.Length)]}";
+        UsageSummary = FormatUsage(snapshot.Stats);
+    }
+
+    private static ChatMessage ToChatMessage(PiConversationItem message) => message.Kind switch
+    {
+        PiConversationItemKind.User => new ChatMessage("You", message.Text, "\uE77B"),
+        PiConversationItemKind.Assistant => new ChatMessage("Pi", message.Text, "\uE8BD"),
+        PiConversationItemKind.Tool => new ChatMessage("Tool", message.Text, "\uE756", isActivity: true, correlationId: message.CorrelationId),
+        _ => new ChatMessage("Activity", message.Text, "\uE7BA", isActivity: true),
+    };
+
+    private static string FormatUsage(PiSessionStats stats)
+    {
+        var summary = $"${stats.Cost:0.0000}";
+        if (stats.ContextPercent is { } percent)
+        {
+            summary += $" · {percent:0.#}% context";
+        }
+        return summary;
     }
 
     private async Task ChangeModelAsync(ModelOption model)
@@ -239,12 +259,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         try
         {
             StatusText = "Switching model…";
-            await _rpc.SendAsync(new JsonObject
-            {
-                ["type"] = "set_model",
-                ["provider"] = model.Provider,
-                ["modelId"] = model.Id,
-            });
+            await _session.SetModelAsync(model.Provider, model.Id);
             await RefreshThinkingLevelsAsync();
             StatusText = "Ready";
         }
@@ -258,7 +273,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     {
         try
         {
-            await _rpc.SendAsync(new JsonObject { ["type"] = "set_thinking_level", ["level"] = level });
+            await _session.SetThinkingLevelAsync(level);
             StatusText = $"Thinking: {level}";
         }
         catch (Exception ex)
@@ -269,17 +284,14 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     private async Task RefreshThinkingLevelsAsync()
     {
-        var response = await _rpc.SendAsync(new JsonObject { ["type"] = "get_available_thinking_levels" });
+        var levels = await _session.GetThinkingLevelsAsync();
         _syncingSelectors = true;
         try
         {
             ThinkingLevels.Clear();
-            foreach (var item in response.GetProperty("data").GetProperty("levels").EnumerateArray())
+            foreach (var level in levels)
             {
-                if (item.GetString() is { } level)
-                {
-                    ThinkingLevels.Add(level);
-                }
+                ThinkingLevels.Add(level);
             }
             SelectedThinkingLevel = ThinkingLevels.FirstOrDefault();
         }
@@ -289,95 +301,75 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private async Task HandleEventAsync(JsonElement message)
+    private async Task HandleEventAsync(PiSessionEvent message)
     {
-        var type = message.GetProperty("type").GetString();
-        if (type == "extension_ui_request" && ExtensionUiHandler is not null)
+        if (message is ExtensionUiRequestedEvent extension)
         {
-            var method = message.GetProperty("method").GetString();
-            if (method is "select" or "confirm" or "input" or "editor")
+            if (extension.Request.Method is ExtensionUiMethod.Select or ExtensionUiMethod.Confirm or ExtensionUiMethod.Input or ExtensionUiMethod.Editor &&
+                ExtensionUiHandler is not null)
             {
-                var response = await RunOnUiAsync(() => ExtensionUiHandler(message));
-                await _rpc.SendNotificationAsync(response);
+                var response = await RunOnUiAsync(() => ExtensionUiHandler(extension.Request));
+                await _session.SendExtensionResponseAsync(response);
             }
             else
             {
-                await RunOnUiAsync(() => HandleFireAndForgetUi(message));
+                await RunOnUiAsync(() => HandleFireAndForgetUi(extension.Request));
             }
             return;
         }
 
         await RunOnUiAsync(() =>
         {
-            switch (type)
+            switch (message)
             {
-                case "agent_start":
+                case AgentStartedEvent:
                     IsStreaming = true;
                     HasError = false;
                     break;
-                case "agent_settled":
+                case AgentSettledEvent:
                     IsStreaming = false;
                     _streamingMessage = null;
                     _ = RefreshStatsAsync();
                     break;
-                case "message_update":
-                    HandleMessageUpdate(message);
+                case AssistantTextDeltaEvent update:
+                    _streamingMessage ??= AddAssistantMessage();
+                    _streamingMessage.Text += update.Delta;
                     break;
-                case "message_end":
-                    HandleMessageEnd(message);
+                case AssistantMessageEndedEvent completed:
+                    HandleMessageEnd(completed);
                     break;
-                case "tool_execution_start":
-                    HandleToolStart(message);
+                case ToolStartedEvent tool:
+                    Messages.Add(new ChatMessage("Tool", $"Running {tool.Name}…", "\uE756", isActivity: true, correlationId: tool.Id));
+                    NotifyMessagesChanged();
                     break;
-                case "tool_execution_end":
-                    HandleToolEnd(message);
+                case ToolEndedEvent tool:
+                    HandleToolEnd(tool);
                     break;
-                case "auto_retry_start":
-                    StatusText = $"Retrying in {message.GetProperty("delayMs").GetInt32() / 1000.0:0.#} seconds…";
+                case RetryStartedEvent retry:
+                    StatusText = $"Retrying in {retry.DelayMilliseconds / 1000.0:0.#} seconds…";
                     break;
-                case "compaction_start":
+                case CompactionStartedEvent:
                     StatusText = "Compacting session context…";
                     break;
-                case "extension_error":
-                    ShowError(message.GetProperty("error").GetString() ?? "A Pi extension failed.");
+                case ExtensionFailedEvent failed:
+                    ShowError(failed.Error);
                     break;
             }
             return Task.CompletedTask;
         });
     }
 
-    private void HandleMessageUpdate(JsonElement message)
+    private void HandleMessageEnd(AssistantMessageEndedEvent completed)
     {
-        var update = message.GetProperty("assistantMessageEvent");
-        if (update.GetProperty("type").GetString() != "text_delta")
-        {
-            return;
-        }
-
-        _streamingMessage ??= AddAssistantMessage();
-        _streamingMessage.Text += update.GetProperty("delta").GetString();
-    }
-
-    private void HandleMessageEnd(JsonElement message)
-    {
-        var completed = message.GetProperty("message");
-        if (!completed.TryGetProperty("role", out var role) || role.GetString() != "assistant")
-        {
-            return;
-        }
-
-        var text = string.Concat(completed.GetProperty("content").EnumerateArray()
-            .Where(block => block.TryGetProperty("type", out var type) && type.GetString() == "text")
-            .Select(block => block.TryGetProperty("text", out var value) ? value.GetString() : string.Empty));
-        if (!string.IsNullOrEmpty(text))
+        if (!string.IsNullOrEmpty(completed.Text))
         {
             _streamingMessage ??= AddAssistantMessage();
-            _streamingMessage.Text = text;
+            _streamingMessage.Text = completed.Text;
         }
 
-        if (completed.TryGetProperty("stopReason", out var stopReason) && stopReason.GetString() == "error")
+        if (completed.StopReason == "error")
         {
-            ShowError(string.IsNullOrEmpty(text) ? "Pi could not complete the response." : text);
+            ShowError(string.IsNullOrEmpty(completed.Text) ? "Pi could not complete the response." : completed.Text);
         }
     }
 
@@ -389,22 +381,12 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         return item;
     }
 
-    private void HandleToolStart(JsonElement message)
+    private void HandleToolEnd(ToolEndedEvent tool)
     {
-        var name = message.GetProperty("toolName").GetString() ?? "tool";
-        var id = message.GetProperty("toolCallId").GetString();
-        Messages.Add(new ChatMessage("Tool", $"Running {name}…", "\uE756", isActivity: true, correlationId: id));
-        NotifyMessagesChanged();
-    }
-
-    private void HandleToolEnd(JsonElement message)
-    {
-        var id = message.GetProperty("toolCallId").GetString();
-        var item = Messages.LastOrDefault(candidate => candidate.CorrelationId == id);
+        var item = Messages.LastOrDefault(candidate => candidate.CorrelationId == tool.Id);
         if (item is not null)
         {
-            var name = message.GetProperty("toolName").GetString() ?? "tool";
-            item.Text = message.GetProperty("isError").GetBoolean() ? $"{name} failed" : $"{name} completed";
+            item.Text = tool.IsError ? $"{tool.Name} failed" : $"{tool.Name} completed";
         }
     }
 
@@ -412,19 +394,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     {
         try
         {
-            var response = await _rpc.SendAsync(new JsonObject { ["type"] = "get_session_stats" });
-            var data = response.GetProperty("data");
-            var cost = data.GetProperty("cost").GetDouble();
-            var summary = $"${cost:0.0000}";
-            if (data.TryGetProperty("contextUsage", out var context) && context.ValueKind == JsonValueKind.Object &&
-                context.TryGetProperty("percent", out var percentValue) && percentValue.ValueKind == JsonValueKind.Number)
-            {
-                summary += $" · {percentValue.GetDouble():0.#}% context";
-            }
-
+            var stats = await _session.GetStatsAsync();
             await RunOnUiAsync(() =>
             {
-                UsageSummary = summary;
+                UsageSummary = FormatUsage(stats);
                 return Task.CompletedTask;
             });
         }
@@ -438,29 +411,25 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private Task HandleFireAndForgetUi(JsonElement message)
+    private Task HandleFireAndForgetUi(ExtensionUiRequest request)
     {
-        var method = message.GetProperty("method").GetString();
-        if (method == "notify")
+        if (request.Method == ExtensionUiMethod.Notify)
         {
-            var text = message.TryGetProperty("message", out var value) ? value.GetString() : null;
-            var severity = message.TryGetProperty("notifyType", out var type) ? type.GetString() : "info";
-            if (severity == "error")
+            if (request.NotifyType == "error")
             {
-                ShowError(text ?? "Pi reported an error.");
+                ShowError(request.Message ?? "Pi reported an error.");
             }
             else
             {
-                StatusText = text ?? "Pi notification";
+                StatusText = request.Message ?? "Pi notification";
             }
         }
-        else if (method == "setStatus" && message.TryGetProperty("statusText", out var status))
+        else if (request.Method == ExtensionUiMethod.SetStatus)
         {
-            StatusText = status.GetString() ?? "Ready";
+            StatusText = request.StatusText ?? "Ready";
         }
         return Task.CompletedTask;
     }
-
     private void ShowError(string message)
     {
         ErrorText = message;
@@ -518,5 +487,5 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         return completion.Task;
     }
 
-    public async ValueTask DisposeAsync() => await _rpc.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _session.DisposeAsync();
 }

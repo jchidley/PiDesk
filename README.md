@@ -1,6 +1,6 @@
 # PiDesk
 
-PiDesk is a native WinUI 3 front end for the [Pi coding agent](https://pi.dev). It runs Pi's supported RPC mode as a child process, replacing terminal presentation while retaining Pi's models, credentials, sessions, tools, skills, extensions, and project instructions.
+PiDesk is a native WinUI 3 front end for the [Pi coding agent](https://pi.dev). It runs Pi's supported RPC mode as a child process and offers a graphical alternative to Pi's interactive TUI while retaining Pi's models, credentials, sessions, tools, skills, extensions, and project instructions.
 
 ![PiDesk conversation view](docs/images/current-ui.png)
 
@@ -23,7 +23,7 @@ The command remains attached while PiDesk is open, so shell elapsed time include
 - Pi extension dialogs for select, confirm, input, and editor requests
 - Keyboard access, UI Automation identifiers, and system theme resources
 
-PiDesk is currently a functional RPC client rather than a complete replacement for Pi's TUI. Session browsing, branching, rich tool output, diffs, Markdown, visible queues, responsive layouts, and release packaging are tracked in the improvement plan.
+PiDesk is currently a functional RPC client but does not yet provide full graphical feature parity with Pi's TUI. It complements rather than deprecates Pi's upstream CLI and TUI. Session browsing, branching, rich tool output, diffs, Markdown, visible queues, responsive layouts, and release packaging are tracked in the improvement plan.
 
 ## Documentation
 
@@ -74,6 +74,9 @@ these people and posts:
 - [Build It Yourself](https://lucumr.pocoo.org/2025/12/22/a-year-of-vibes/) —
   Armin Ronacher: "With our newfound power from agentic coding tools, you can
   build much of this yourself..."
+- [Stop Making TUIs](https://sockpuppet.org/blog/2026/08/20/stop-making-tuis/) —
+  Thomas Ptacek on retaining CLIs for automation while making native graphical
+  interfaces practical with coding agents
 - [Shipping at Inference Speed](https://steipete.me/posts/2025/shipping-at-inference-speed) —
   Peter Steinberger on the new workflow of building with AI assistance
 - [Year in Review 2025](https://mariozechner.at/posts/2025-12-22-year-in-review-2025/) —

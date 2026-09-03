@@ -33,6 +33,9 @@
 
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />
+    <Compile Remove="tests\**\*.cs" />
+    <Compile Remove="src\**\*.cs" />
+    <ProjectReference Include="src\PiDesk.Protocol\PiDesk.Protocol.csproj" />
   </ItemGroup>
 
   <!--

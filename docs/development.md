@@ -25,6 +25,16 @@ Build with the bundled WinUI analyzer without launching:
 ./BuildAndRun.ps1 . --no-launch --arch x64
 ```
 
+## Protocol and process tests
+
+Run the deterministic unit and fake-child process suite without launching WinUI or making a provider request:
+
+```powershell
+dotnet test tests/PiDesk.Tests/PiDesk.Tests.csproj
+```
+
+The fake RPC child requires `node.exe` on `PATH`, matching PiDesk's Pi runtime prerequisite. The 32-test suite covers strict and bounded JSONL framing, response correlation, malformed records, caller cancellation, expected replacement shutdown, stale-reader isolation, child PID cleanup, unexpected EOF, bounded stderr context, observer failures, typed protocol parsing and commands, installed-version rejection, lifecycle transitions, message restoration, cancelled session replacement, candidate startup ordering, candidate load failure recovery, prompt rejection, delivery-order queue restoration, ambiguous clear-queue timeout recovery, and request timeout. It also retains killed-mutation evidence from the preceding slices for the exact record-size boundary, CRLF normalization, stale-generation guard, newest-stderr retention, version gate, and required state fields. The mutation ledger records one additional survivor whose intended large-single-chunk branch was not reachable through the process fixture because the reader delivered smaller chunks.
+
 ## UI tests
 
 Launch PiDesk, copy the reported PID, then run:

@@ -1,11 +1,10 @@
 using System.Collections.Specialized;
-using System.Text.Json;
-using System.Text.Json.Nodes;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using PiDesk.Services;
 using PiDesk.ViewModels;
 using Windows.Storage.Pickers;
 using Windows.System;
@@ -86,94 +85,71 @@ public sealed partial class MainPage : Page
         }
     }
 
-    private async Task<JsonObject> HandleExtensionUiAsync(JsonElement request)
+    private async Task<ExtensionUiResponse> HandleExtensionUiAsync(ExtensionUiRequest request)
     {
-        var method = request.GetProperty("method").GetString();
-        var title = request.TryGetProperty("title", out var titleValue) ? titleValue.GetString() : "Pi";
-        var response = new JsonObject
+        var title = request.Title ?? "Pi";
+        switch (request.Method)
         {
-            ["type"] = "extension_ui_response",
-            ["id"] = request.GetProperty("id").GetString(),
-        };
-
-        switch (method)
-        {
-            case "confirm":
+            case ExtensionUiMethod.Confirm:
             {
-                var dialog = CreateDialog(title ?? "Confirm");
-                dialog.Content = request.TryGetProperty("message", out var message) ? message.GetString() : string.Empty;
+                var dialog = CreateDialog(title);
+                dialog.Content = request.Message ?? string.Empty;
                 dialog.PrimaryButtonText = "Confirm";
                 dialog.CloseButtonText = "Cancel";
                 dialog.DefaultButton = ContentDialogButton.Primary;
-                response["confirmed"] = await dialog.ShowAsync() == ContentDialogResult.Primary;
-                break;
+                return new ExtensionUiResponse(request.Id, Confirmed: await dialog.ShowAsync() == ContentDialogResult.Primary);
             }
-            case "select":
+            case ExtensionUiMethod.Select:
             {
                 var choices = new ListView
                 {
                     SelectionMode = ListViewSelectionMode.Single,
                     MaxHeight = 360,
                 };
-                foreach (var option in request.GetProperty("options").EnumerateArray())
+                foreach (var option in request.Options)
                 {
-                    choices.Items.Add(option.GetString());
+                    choices.Items.Add(option);
                 }
                 if (choices.Items.Count > 0)
                 {
                     choices.SelectedIndex = 0;
                 }
 
-                var dialog = CreateDialog(title ?? "Choose an option");
+                var dialog = CreateDialog(title);
                 dialog.Content = choices;
                 dialog.PrimaryButtonText = "Choose";
                 dialog.CloseButtonText = "Cancel";
                 dialog.DefaultButton = ContentDialogButton.Primary;
-                if (await dialog.ShowAsync() == ContentDialogResult.Primary && choices.SelectedItem is string selection)
-                {
-                    response["value"] = selection;
-                }
-                else
-                {
-                    response["cancelled"] = true;
-                }
-                break;
+                return await dialog.ShowAsync() == ContentDialogResult.Primary && choices.SelectedItem is string selection
+                    ? new ExtensionUiResponse(request.Id, Value: selection)
+                    : new ExtensionUiResponse(request.Id, Cancelled: true);
             }
-            case "input":
-            case "editor":
+            case ExtensionUiMethod.Input:
+            case ExtensionUiMethod.Editor:
             {
+                var isEditor = request.Method == ExtensionUiMethod.Editor;
                 var input = new TextBox
                 {
-                    AcceptsReturn = method == "editor",
+                    AcceptsReturn = isEditor,
                     TextWrapping = TextWrapping.Wrap,
                     MinWidth = 420,
-                    MinHeight = method == "editor" ? 180 : 0,
-                    Text = request.TryGetProperty("prefill", out var prefill) ? prefill.GetString() : string.Empty,
-                    PlaceholderText = request.TryGetProperty("placeholder", out var placeholder) ? placeholder.GetString() : string.Empty,
+                    MinHeight = isEditor ? 180 : 0,
+                    Text = request.Prefill ?? string.Empty,
+                    PlaceholderText = request.Placeholder ?? string.Empty,
                 };
-                var dialog = CreateDialog(title ?? "Enter a value");
+                var dialog = CreateDialog(title);
                 dialog.Content = input;
                 dialog.PrimaryButtonText = "Submit";
                 dialog.CloseButtonText = "Cancel";
                 dialog.DefaultButton = ContentDialogButton.Primary;
-                if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-                {
-                    response["value"] = input.Text;
-                }
-                else
-                {
-                    response["cancelled"] = true;
-                }
-                break;
+                return await dialog.ShowAsync() == ContentDialogResult.Primary
+                    ? new ExtensionUiResponse(request.Id, Value: input.Text)
+                    : new ExtensionUiResponse(request.Id, Cancelled: true);
             }
             default:
-                response["cancelled"] = true;
-                break;
+                return new ExtensionUiResponse(request.Id, Cancelled: true);
         }
-
-        return response;
     }
-
     private ContentDialog CreateDialog(string title) => new()
     {
         XamlRoot = XamlRoot,

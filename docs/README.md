@@ -2,7 +2,7 @@
 
 This directory separates current architecture, design assessment, development instructions, and planned work.
 
-- [Architecture](architecture.md) — how the WinUI process replaces Pi's TUI through RPC.
+- [Architecture](architecture.md) — how the WinUI process provides a graphical alternative to Pi's TUI through RPC.
 - [Design review](design-review.md) — current strengths, defects, feature gaps, and assessment of the Microsoft WinUI skills.
 - [Improvement plan](improvement-plan.md) — ordered milestones and acceptance criteria.
 - [Development](development.md) — build, run, and test the application.

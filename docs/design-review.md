@@ -1,10 +1,12 @@
 # Design review
 
-This review records the current quality and completeness of PiDesk against Pi 0.84.4 and the upstream Microsoft WinUI development skills. It is a point-in-time assessment, not the implementation plan; planned work belongs in [the improvement plan](improvement-plan.md).
+This review records the current quality and completeness of PiDesk against Pi 0.84.4 and the upstream Microsoft WinUI development skills. It is a point-in-time assessment, not the implementation plan; implementation status and planned work belong in [the improvement plan](improvement-plan.md).
+
+The latest implementation review verified a warning-free analyzer build and 32 deterministic protocol/process tests. The shared production library combines bounded transport handling with a typed session service, pre-launch Pi 0.84.4 validation, explicit lifecycle states, restored session snapshots, non-destructive candidate project startup, prompt acceptance, and queue recovery. Focused mutation trials from the preceding slices killed six semantic defects across exact record-size handling, CRLF normalization, stale-generation suppression, newest-stderr retention, version validation, and required response fields. One recorded survivor identified a fixture-unreachable large-single-chunk path rather than a missing externally exercised contract.
 
 ## Verdict
 
-PiDesk is a sound native WinUI proof of concept and a useful Pi RPC chat client. It is not yet a full graphical replacement for Pi's interactive TUI.
+PiDesk is a sound native WinUI proof of concept and a useful Pi RPC chat client. It does not yet provide full graphical feature parity with Pi's interactive TUI.
 
 | Area | Assessment |
 |---|---:|
@@ -18,34 +20,29 @@ PiDesk is a sound native WinUI proof of concept and a useful Pi RPC chat client.
 - The process boundary is correct: PiDesk replaces presentation while Pi retains the agent loop, tools, models, extensions, and sessions.
 - The UI uses platform controls, Mica, theme resources, explicit `x:Bind` modes, a virtualized `ListView`, visible labels, and AutomationIds.
 - MVVM boundaries are generally appropriate: state and commands live in the ViewModel; picker, keyboard, scrolling, and dialog coordination remain in code-behind.
-- The RPC client correlates responses, streams events, handles Pi extension dialogs, and now performs clean child-process shutdown.
-- The analyzer build completes with no warnings, and the end-to-end UI suite passes 11 tests.
+- The shared RPC transport correlates responses by process generation, uses bounded strict LF-delimited framing, continues after malformed records, retains timestamped diagnostics and recent stderr safely, and distinguishes intentional shutdown from unexpected exit.
+- The ViewModel and extension-dialog path now consume typed protocol models rather than traversing `JsonElement` records.
+- Startup and session replacement restore the active message path and usage before applying visible state; failed candidate projects leave the prior session usable.
+- Prompt cards expose pending and failed submission state, rejected text returns to the composer, and abort restores cleared steering then follow-up text before any newer draft.
+- The analyzer build completes with no warnings; 32 deterministic protocol/process tests pass, and the latest recorded end-to-end UI suite passed 11 tests before the current protocol changes.
 
 ## High-priority findings
 
-### Cancelled session changes are ignored
-
-`MainPageViewModel.NewSessionAsync` clears UI state without inspecting the `cancelled` value returned by Pi. An extension can therefore keep the backend on the old session while PiDesk displays a blank new session.
-
 ### Session functionality is too limited
 
-Pi RPC exposes switching, messages, entries, tree navigation, fork, clone, naming, and export. PiDesk exposes only New session and does not restore history after session replacement.
+Pi RPC exposes switching, entries, tree navigation, fork, clone, naming, and export. PiDesk currently exposes only atomic New session and project replacement, although both now restore the active message path.
 
 ### Coding activity is reduced to plain text
 
 The conversation currently presents assistant text plus `tool completed` or `tool failed`. It omits thinking, tool arguments, streaming output, final results, diffs, structured retry and compaction state, Markdown, and code formatting. This is the largest gap for a coding-agent UI.
 
-### Expected exits can become errors
-
-The reader reports any Pi stdout EOF as an error, including the intentional stop used when changing project. Expected and unexpected process exits need separate paths.
-
 ## Other findings
 
 - The fixed header columns have no responsive breakpoints and can clip at narrow widths.
-- Queue state is not displayed; queued messages cleared during abort are not restored.
+- Full queue state is retained for abort recovery but is not yet displayed.
 - Rapid model or thinking selection can race because changes are fire-and-forget.
-- Each stderr line becomes a user-visible error, and a malformed stdout record can terminate the reader.
-- The ViewModel contains extensive raw JSON protocol parsing and should depend on a typed session service.
+- Transport diagnostics are retained in memory and publicly readable but are not yet exposed through a user-copyable UI.
+- No real-Pi UI test has been rerun after the transport change.
 - Conversation items expose their CLR type rather than useful role/content names to UI Automation.
 - The non-dismissible error bar lacks a retry or reconnect action.
 - Pi command discovery, images, follow-up messages, session tree, and rich extension widgets are absent.
@@ -66,7 +63,7 @@ The local `winui-design`, `winui-dev-workflow`, `winui-code-review`, and `winui-
 - `winapp find-ui` had no chat or coding-agent shell sample, so the central interaction was designed without a grounded reference.
 - The first generated response test was a false positive because its expected token also appeared in the prompt.
 - The skills did not prevent lifecycle and concurrency defects: late DispatcherQueue initialization, a same-channel RPC deadlock, async selector races, or cancellation-based subprocess shutdown.
-- Test coverage remains happy-path and Dark-theme biased; it does not yet cover narrow layout, High Contrast, extension UI, folder switching, queues, or session cancellation.
+- UI Automation coverage remains happy-path and Dark-theme biased; it does not yet cover narrow layout, High Contrast, extension UI, folder switching, queues, or cancelled session changes.
 - `winui-session-report` supports Copilot CLI and Claude Code but not the Pi session format, even though the other skills run successfully under Pi.
 
 ## Upstream references
