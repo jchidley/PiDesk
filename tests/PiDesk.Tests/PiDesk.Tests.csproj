@@ -18,6 +18,7 @@
     <Using Include="Xunit" />
     <ProjectReference Include="..\..\src\PiDesk.Protocol\PiDesk.Protocol.csproj" />
     <None Include="Fixtures\fake-rpc.js" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Fixtures\agent-activity.jsonl" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,19 @@
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_start","contentIndex":0}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":"Inspecting "}}
+{"type":"message_update","assistantMessageEvent":{"type":"thinking_end","contentIndex":0,"content":"Inspecting files"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_start","contentIndex":1,"id":"call-edit","toolName":"edit"}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","contentIndex":1,"delta":"{\"path\":\"a.txt\""}}
+{"type":"message_update","assistantMessageEvent":{"type":"toolcall_end","contentIndex":1,"toolCall":{"type":"toolCall","id":"call-edit","name":"edit","arguments":{"path":"a.txt","edits":[{"oldText":"old","newText":"new"}]}}}}
+{"type":"tool_execution_start","toolCallId":"call-edit","toolName":"edit","args":{"path":"a.txt","edits":[{"oldText":"old","newText":"new"}]}}
+{"type":"tool_execution_update","toolCallId":"call-edit","toolName":"edit","args":{"path":"a.txt","edits":[{"oldText":"old","newText":"new"}]},"partialResult":{"content":[{"type":"text","text":"Applying edit"}],"details":{"phase":"write"}}}
+{"type":"tool_execution_end","toolCallId":"call-edit","toolName":"edit","result":{"content":[{"type":"text","text":"Updated a.txt"}],"details":{"diff":" 1 old\n+1 new","patch":"--- a.txt\n+++ a.txt","firstChangedLine":1}},"isError":false}
+{"type":"tool_execution_end","toolCallId":"call-build","toolName":"bash","result":{"content":[{"type":"text","text":"build failed"}],"details":{"exitCode":1}},"isError":true}
+{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"Unable to finish"}],"stopReason":"error","errorMessage":"provider unavailable"}}
+{"type":"auto_retry_start","attempt":1,"maxAttempts":3,"delayMs":2000,"errorMessage":"overloaded"}
+{"type":"auto_retry_end","success":false,"attempt":3,"finalError":"overloaded after retries"}
+{"type":"summarization_retry_scheduled","attempt":1,"maxAttempts":3,"delayMs":1000,"errorMessage":"summary stream ended"}
+{"type":"summarization_retry_attempt_start","source":"compaction","reason":"threshold"}
+{"type":"summarization_retry_finished"}
+{"type":"compaction_start","reason":"threshold"}
+{"type":"compaction_end","reason":"threshold","result":{"summary":"Retained work summary","firstKeptEntryId":"entry-1","tokensBefore":150000,"estimatedTokensAfter":32000},"aborted":false,"willRetry":false}
+{"type":"compaction_end","reason":"overflow","result":null,"aborted":false,"willRetry":false,"errorMessage":"compaction quota exceeded"}

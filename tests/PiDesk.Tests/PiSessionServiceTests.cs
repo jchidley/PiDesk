@@ -16,10 +16,10 @@ public sealed class PiSessionProtocolTests
             ("""{"type":"queue_update","steering":["s"],"followUp":["f"]}""", typeof(QueueUpdatedEvent)),
             ("""{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"hi"}}""", typeof(AssistantTextDeltaEvent)),
             ("""{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"done"}],"stopReason":"stop"}}""", typeof(AssistantMessageEndedEvent)),
-            ("""{"type":"tool_execution_start","toolCallId":"1","toolName":"read"}""", typeof(ToolStartedEvent)),
-            ("""{"type":"tool_execution_end","toolCallId":"1","toolName":"read","isError":false}""", typeof(ToolEndedEvent)),
-            ("""{"type":"auto_retry_start","delayMs":2000}""", typeof(RetryStartedEvent)),
-            ("""{"type":"compaction_start"}""", typeof(CompactionStartedEvent)),
+            ("""{"type":"tool_execution_start","toolCallId":"1","toolName":"read","args":{"path":"a.txt"}}""", typeof(ToolStartedEvent)),
+            ("""{"type":"tool_execution_end","toolCallId":"1","toolName":"read","result":{"content":[{"type":"text","text":"ok"}],"details":{}},"isError":false}""", typeof(ToolEndedEvent)),
+            ("""{"type":"auto_retry_start","attempt":1,"maxAttempts":3,"delayMs":2000,"errorMessage":"busy"}""", typeof(RetryStartedEvent)),
+            ("""{"type":"compaction_start","reason":"threshold"}""", typeof(CompactionStartedEvent)),
             ("""{"type":"extension_error","error":"failed"}""", typeof(ExtensionFailedEvent)),
             ("""{"type":"extension_ui_request","id":"ui-1","method":"select","title":"Pick","options":["a","b"]}""", typeof(ExtensionUiRequestedEvent)),
         };
@@ -28,6 +28,81 @@ public sealed class PiSessionProtocolTests
         {
             Assert.IsType(expected, PiProtocolParser.ParseEvent(Parse(json)));
         }
+    }
+
+    [Fact]
+    public async Task AgentActivityFixtureParsesCompleteOrderedTypedState()
+    {
+        var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "agent-activity.jsonl");
+        var events = (await File.ReadAllLinesAsync(fixturePath))
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Select(line => PiProtocolParser.ParseEvent(Parse(line)))
+            .ToArray();
+
+        Assert.Equal(
+            [
+                typeof(AssistantThinkingStartedEvent), typeof(AssistantThinkingDeltaEvent), typeof(AssistantThinkingEndedEvent),
+                typeof(AssistantToolCallStartedEvent), typeof(AssistantToolArgumentsDeltaEvent), typeof(AssistantToolCallEndedEvent),
+                typeof(ToolStartedEvent), typeof(ToolUpdatedEvent), typeof(ToolEndedEvent), typeof(ToolEndedEvent),
+                typeof(AssistantMessageEndedEvent), typeof(RetryStartedEvent), typeof(RetryEndedEvent),
+                typeof(SummarizationRetryScheduledEvent), typeof(SummarizationRetryAttemptStartedEvent),
+                typeof(SummarizationRetryFinishedEvent), typeof(CompactionStartedEvent),
+                typeof(CompactionEndedEvent), typeof(CompactionEndedEvent),
+            ],
+            events.Select(item => item.GetType()));
+
+        Assert.Equal("Inspecting ", Assert.IsType<AssistantThinkingDeltaEvent>(events[1]).Delta);
+        Assert.Equal("Inspecting files", Assert.IsType<AssistantThinkingEndedEvent>(events[2]).Thinking);
+
+        var streamedCall = Assert.IsType<AssistantToolCallEndedEvent>(events[5]);
+        Assert.Equal(("call-edit", "edit"), (streamedCall.Id, streamedCall.Name));
+        Assert.Contains("\"path\":\"a.txt\"", streamedCall.Arguments.Json);
+
+        var started = Assert.IsType<ToolStartedEvent>(events[6]);
+        Assert.Contains("\"edits\"", started.Arguments.Json);
+        var update = Assert.IsType<ToolUpdatedEvent>(events[7]);
+        Assert.Equal("Applying edit", update.PartialResult.Text);
+        Assert.Equal("{\"phase\":\"write\"}", update.PartialResult.DetailsJson);
+
+        var completed = Assert.IsType<ToolEndedEvent>(events[8]);
+        Assert.False(completed.IsError);
+        Assert.Equal("Updated a.txt", completed.Result.Text);
+        Assert.Equal(" 1 old\n+1 new", completed.Result.Diff?.Diff);
+        Assert.Equal("--- a.txt\n+++ a.txt", completed.Result.Diff?.Patch);
+        Assert.Equal(1, completed.Result.Diff?.FirstChangedLine);
+        var failed = Assert.IsType<ToolEndedEvent>(events[9]);
+        Assert.True(failed.IsError);
+        Assert.Equal("build failed", failed.Result.Text);
+
+        var assistantError = Assert.IsType<AssistantMessageEndedEvent>(events[10]);
+        Assert.Equal("provider unavailable", assistantError.ErrorMessage);
+        var retry = Assert.IsType<RetryStartedEvent>(events[11]);
+        Assert.Equal((1, 3, 2000, "overloaded"),
+            (retry.Attempt, retry.MaxAttempts, retry.DelayMilliseconds, retry.ErrorMessage));
+        Assert.Equal("overloaded after retries", Assert.IsType<RetryEndedEvent>(events[12]).FinalError);
+        var summarizationRetry = Assert.IsType<SummarizationRetryScheduledEvent>(events[13]);
+        Assert.Equal((1, 3, 1000),
+            (summarizationRetry.Attempt, summarizationRetry.MaxAttempts, summarizationRetry.DelayMilliseconds));
+        var summarizationAttempt = Assert.IsType<SummarizationRetryAttemptStartedEvent>(events[14]);
+        Assert.Equal(("compaction", "threshold"), (summarizationAttempt.Source, summarizationAttempt.Reason));
+
+        Assert.Equal("threshold", Assert.IsType<CompactionStartedEvent>(events[16]).Reason);
+        var compacted = Assert.IsType<CompactionEndedEvent>(events[17]);
+        Assert.Equal(("Retained work summary", "entry-1", 150000, 32000),
+            (compacted.Result?.Summary, compacted.Result?.FirstKeptEntryId,
+                compacted.Result?.TokensBefore, compacted.Result?.EstimatedTokensAfter));
+        var compactionError = Assert.IsType<CompactionEndedEvent>(events[18]);
+        Assert.Null(compactionError.Result);
+        Assert.Equal("compaction quota exceeded", compactionError.ErrorMessage);
+    }
+
+    [Fact]
+    public void NonObjectToolArgumentsFailAtTheTypedBoundary()
+    {
+        var exception = Assert.Throws<InvalidDataException>(() => PiProtocolParser.ParseEvent(Parse(
+            """{"type":"tool_execution_start","toolCallId":"1","toolName":"read","args":"unchecked"}""")));
+
+        Assert.Contains("required object 'args'", exception.Message);
     }
 
     [Fact]

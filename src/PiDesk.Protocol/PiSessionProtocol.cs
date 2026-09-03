@@ -116,11 +116,40 @@ public sealed record AgentStartedEvent : PiSessionEvent;
 public sealed record AgentSettledEvent : PiSessionEvent;
 public sealed record QueueUpdatedEvent(PiClearedQueue Queue) : PiSessionEvent;
 public sealed record AssistantTextDeltaEvent(string Delta) : PiSessionEvent;
-public sealed record AssistantMessageEndedEvent(string Text, string? StopReason) : PiSessionEvent;
-public sealed record ToolStartedEvent(string? Id, string Name) : PiSessionEvent;
-public sealed record ToolEndedEvent(string? Id, string Name, bool IsError) : PiSessionEvent;
-public sealed record RetryStartedEvent(int DelayMilliseconds) : PiSessionEvent;
-public sealed record CompactionStartedEvent : PiSessionEvent;
+public sealed record AssistantThinkingStartedEvent(int ContentIndex) : PiSessionEvent;
+public sealed record AssistantThinkingDeltaEvent(int ContentIndex, string Delta) : PiSessionEvent;
+public sealed record AssistantThinkingEndedEvent(int ContentIndex, string Thinking) : PiSessionEvent;
+public sealed record AssistantToolCallStartedEvent(int ContentIndex, string Id, string Name) : PiSessionEvent;
+public sealed record AssistantToolArgumentsDeltaEvent(int ContentIndex, string Delta) : PiSessionEvent;
+public sealed record PiToolArguments(string Json);
+public sealed record AssistantToolCallEndedEvent(int ContentIndex, string Id, string Name, PiToolArguments Arguments) : PiSessionEvent;
+public sealed record AssistantMessageEndedEvent(string Text, string? StopReason, string? ErrorMessage) : PiSessionEvent;
+public sealed record PiDiff(string Diff, string? Patch, int? FirstChangedLine);
+public sealed record PiToolResult(string Text, string? DetailsJson, PiDiff? Diff);
+public sealed record ToolStartedEvent(string Id, string Name, PiToolArguments Arguments) : PiSessionEvent;
+public sealed record ToolUpdatedEvent(string Id, string Name, PiToolArguments Arguments, PiToolResult PartialResult) : PiSessionEvent;
+public sealed record ToolEndedEvent(string Id, string Name, PiToolResult Result, bool IsError) : PiSessionEvent;
+public sealed record RetryStartedEvent(int Attempt, int MaxAttempts, int DelayMilliseconds, string ErrorMessage) : PiSessionEvent;
+public sealed record RetryEndedEvent(bool Success, int Attempt, string? FinalError) : PiSessionEvent;
+public sealed record SummarizationRetryScheduledEvent(
+    int Attempt,
+    int MaxAttempts,
+    int DelayMilliseconds,
+    string ErrorMessage) : PiSessionEvent;
+public sealed record SummarizationRetryAttemptStartedEvent(string Source, string? Reason) : PiSessionEvent;
+public sealed record SummarizationRetryFinishedEvent : PiSessionEvent;
+public sealed record CompactionStartedEvent(string Reason) : PiSessionEvent;
+public sealed record PiCompactionResult(
+    string Summary,
+    string FirstKeptEntryId,
+    int TokensBefore,
+    int? EstimatedTokensAfter);
+public sealed record CompactionEndedEvent(
+    string Reason,
+    PiCompactionResult? Result,
+    bool Aborted,
+    bool WillRetry,
+    string? ErrorMessage) : PiSessionEvent;
 public sealed record ExtensionFailedEvent(string Error) : PiSessionEvent;
 public sealed record ExtensionUiRequestedEvent(ExtensionUiRequest Request) : PiSessionEvent;
 public sealed record UnknownSessionEvent(string Type) : PiSessionEvent;
@@ -139,11 +168,26 @@ internal static class PiProtocolParser
             "message_update" => ParseMessageUpdate(message),
             "message_end" => ParseMessageEnd(message),
             "tool_execution_start" => new ToolStartedEvent(
-                OptionalString(message, "toolCallId"), RequiredString(message, "toolName")),
+                RequiredString(message, "toolCallId"), RequiredString(message, "toolName"), ParseToolArguments(message, "args")),
+            "tool_execution_update" => new ToolUpdatedEvent(
+                RequiredString(message, "toolCallId"), RequiredString(message, "toolName"), ParseToolArguments(message, "args"),
+                ParseToolResult(RequiredObject(message, "partialResult"))),
             "tool_execution_end" => new ToolEndedEvent(
-                OptionalString(message, "toolCallId"), RequiredString(message, "toolName"), RequiredBoolean(message, "isError")),
-            "auto_retry_start" => new RetryStartedEvent(RequiredInt32(message, "delayMs")),
-            "compaction_start" => new CompactionStartedEvent(),
+                RequiredString(message, "toolCallId"), RequiredString(message, "toolName"),
+                ParseToolResult(RequiredObject(message, "result")), RequiredBoolean(message, "isError")),
+            "auto_retry_start" => new RetryStartedEvent(
+                RequiredInt32(message, "attempt"), RequiredInt32(message, "maxAttempts"),
+                RequiredInt32(message, "delayMs"), RequiredString(message, "errorMessage")),
+            "auto_retry_end" => new RetryEndedEvent(
+                RequiredBoolean(message, "success"), RequiredInt32(message, "attempt"), OptionalString(message, "finalError")),
+            "summarization_retry_scheduled" => new SummarizationRetryScheduledEvent(
+                RequiredInt32(message, "attempt"), RequiredInt32(message, "maxAttempts"),
+                RequiredInt32(message, "delayMs"), RequiredString(message, "errorMessage")),
+            "summarization_retry_attempt_start" => new SummarizationRetryAttemptStartedEvent(
+                RequiredString(message, "source"), OptionalString(message, "reason")),
+            "summarization_retry_finished" => new SummarizationRetryFinishedEvent(),
+            "compaction_start" => new CompactionStartedEvent(RequiredString(message, "reason")),
+            "compaction_end" => ParseCompactionEnd(message),
             "extension_error" => new ExtensionFailedEvent(RequiredString(message, "error")),
             "extension_ui_request" => new ExtensionUiRequestedEvent(ParseExtensionRequest(message)),
             _ => new UnknownSessionEvent(type),
@@ -233,9 +277,22 @@ internal static class PiProtocolParser
     private static PiSessionEvent ParseMessageUpdate(JsonElement message)
     {
         var update = RequiredObject(message, "assistantMessageEvent");
-        return OptionalString(update, "type") == "text_delta"
-            ? new AssistantTextDeltaEvent(RequiredString(update, "delta"))
-            : new UnknownSessionEvent($"message_update:{OptionalString(update, "type") ?? "unknown"}");
+        var type = RequiredString(update, "type");
+        return type switch
+        {
+            "text_delta" => new AssistantTextDeltaEvent(RequiredString(update, "delta")),
+            "thinking_start" => new AssistantThinkingStartedEvent(RequiredInt32(update, "contentIndex")),
+            "thinking_delta" => new AssistantThinkingDeltaEvent(
+                RequiredInt32(update, "contentIndex"), RequiredString(update, "delta")),
+            "thinking_end" => new AssistantThinkingEndedEvent(
+                RequiredInt32(update, "contentIndex"), RequiredString(update, "content")),
+            "toolcall_start" => new AssistantToolCallStartedEvent(
+                RequiredInt32(update, "contentIndex"), RequiredString(update, "id"), RequiredString(update, "toolName")),
+            "toolcall_delta" => new AssistantToolArgumentsDeltaEvent(
+                RequiredInt32(update, "contentIndex"), RequiredString(update, "delta")),
+            "toolcall_end" => ParseToolCallEnd(update),
+            _ => new UnknownSessionEvent($"message_update:{type}"),
+        };
     }
 
     private static PiSessionEvent ParseMessageEnd(JsonElement message)
@@ -253,7 +310,58 @@ internal static class PiProtocolParser
                 .Where(block => OptionalString(block, "type") == "text")
                 .Select(block => OptionalString(block, "text") ?? string.Empty));
         }
-        return new AssistantMessageEndedEvent(text, OptionalString(completed, "stopReason"));
+        return new AssistantMessageEndedEvent(
+            text, OptionalString(completed, "stopReason"), OptionalString(completed, "errorMessage"));
+    }
+
+    private static AssistantToolCallEndedEvent ParseToolCallEnd(JsonElement update)
+    {
+        var toolCall = RequiredObject(update, "toolCall");
+        return new AssistantToolCallEndedEvent(
+            RequiredInt32(update, "contentIndex"),
+            RequiredString(toolCall, "id"),
+            RequiredString(toolCall, "name"),
+            ParseToolArguments(toolCall, "arguments"));
+    }
+
+    private static PiToolResult ParseToolResult(JsonElement result)
+    {
+        var text = string.Concat(RequiredArray(result, "content").EnumerateArray()
+            .Where(item => OptionalString(item, "type") == "text")
+            .Select(item => RequiredString(item, "text")));
+        string? detailsJson = null;
+        PiDiff? diff = null;
+        if (result.TryGetProperty("details", out var details) && details.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined)
+        {
+            detailsJson = details.GetRawText();
+            if (details.ValueKind == JsonValueKind.Object && OptionalString(details, "diff") is { } diffText)
+            {
+                diff = new PiDiff(
+                    diffText,
+                    OptionalString(details, "patch"),
+                    OptionalInt32(details, "firstChangedLine"));
+            }
+        }
+        return new PiToolResult(text, detailsJson, diff);
+    }
+
+    private static CompactionEndedEvent ParseCompactionEnd(JsonElement message)
+    {
+        PiCompactionResult? result = null;
+        if (message.TryGetProperty("result", out var resultValue) && resultValue.ValueKind == JsonValueKind.Object)
+        {
+            result = new PiCompactionResult(
+                RequiredString(resultValue, "summary"),
+                RequiredString(resultValue, "firstKeptEntryId"),
+                RequiredInt32(resultValue, "tokensBefore"),
+                OptionalInt32(resultValue, "estimatedTokensAfter"));
+        }
+        return new CompactionEndedEvent(
+            RequiredString(message, "reason"),
+            result,
+            RequiredBoolean(message, "aborted"),
+            RequiredBoolean(message, "willRetry"),
+            OptionalString(message, "errorMessage"));
     }
 
     private static string ParseContent(JsonElement message)
@@ -327,6 +435,12 @@ internal static class PiProtocolParser
     private static int RequiredInt32(JsonElement owner, string name) =>
         owner.TryGetProperty(name, out var value) && value.TryGetInt32(out var result)
             ? result : throw Invalid($"required integer '{name}' is missing");
+
+    private static int? OptionalInt32(JsonElement owner, string name) =>
+        owner.TryGetProperty(name, out var value) && value.TryGetInt32(out var result) ? result : null;
+
+    private static PiToolArguments ParseToolArguments(JsonElement owner, string name) =>
+        new(RequiredObject(owner, name).GetRawText());
 
     private static double RequiredDouble(JsonElement owner, string name) =>
         owner.TryGetProperty(name, out var value) && value.TryGetDouble(out var result)
