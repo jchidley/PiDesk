@@ -33,7 +33,9 @@ public sealed record PiConversationItem(
     PiConversationItemKind Kind,
     string Text,
     string? CorrelationId = null,
-    bool IsError = false);
+    bool IsError = false,
+    string? ToolName = null,
+    string? ResultText = null);
 
 public sealed record PiSessionStats(double Cost, double? ContextPercent);
 
@@ -249,8 +251,14 @@ internal static class PiProtocolParser
                         ? $"{RequiredString(message, "toolName")} failed"
                         : $"{RequiredString(message, "toolName")} completed",
                     OptionalString(message, "toolCallId"),
-                    RequiredBoolean(message, "isError")),
-                "bashExecution" => new(PiConversationItemKind.Tool, OptionalString(message, "output") ?? string.Empty),
+                    RequiredBoolean(message, "isError"),
+                    RequiredString(message, "toolName"),
+                    ParseContent(message)),
+                "bashExecution" => new(
+                    PiConversationItemKind.Tool,
+                    OptionalString(message, "output") ?? string.Empty,
+                    ToolName: "bash",
+                    ResultText: OptionalString(message, "output")),
                 "custom" when message.TryGetProperty("display", out var display) && display.ValueKind == JsonValueKind.True =>
                     new(PiConversationItemKind.Activity, ParseContent(message)),
                 "branchSummary" => new(PiConversationItemKind.Activity, RequiredString(message, "summary")),
