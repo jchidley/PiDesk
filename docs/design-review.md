@@ -2,7 +2,7 @@
 
 This review records the current quality and completeness of PiDesk against Pi 0.84.4 and the upstream Microsoft WinUI development skills. It is a point-in-time assessment, not the implementation plan; implementation status and planned work belong in [the improvement plan](improvement-plan.md).
 
-The latest implementation review verified a warning-free analyzer build, 45 deterministic protocol/process tests, and a 16-scenario real-Pi UI smoke test against Pi 0.84.4. The shared production library combines bounded transport handling with a typed session service, explicit lifecycle states, restored session snapshots, non-destructive candidate project startup, prompt and queue recovery, serialized mutations, and generation-safe latest-selection-wins selectors. Focused mutation trials from the preceding slices killed six semantic defects across exact record-size handling, CRLF normalization, stale-generation suppression, newest-stderr retention, version validation, and required response fields. One recorded survivor identified a fixture-unreachable large-single-chunk path rather than a missing externally exercised contract.
+The latest implementation review verified a warning-free analyzer build, 45 deterministic protocol/process tests, a 17-scenario fake-RPC Milestone 1 UI acceptance run, and the earlier 16-scenario real-Pi UI smoke test against Pi 0.84.4. The shared production library combines bounded transport handling with a typed session service, explicit lifecycle states, restored session snapshots, non-destructive candidate project startup, prompt and queue recovery, serialized mutations, and generation-safe latest-selection-wins selectors. Focused mutation trials from the preceding slices killed six semantic defects across exact record-size handling, CRLF normalization, stale-generation suppression, newest-stderr retention, version validation, and required response fields. One recorded survivor identified a fixture-unreachable large-single-chunk path rather than a missing externally exercised contract.
 
 ## Verdict
 
@@ -25,7 +25,7 @@ PiDesk is a sound native WinUI proof of concept and a useful Pi RPC chat client.
 - Startup and session replacement restore the active message path and usage before applying visible state; failed candidate projects leave the prior session usable.
 - Prompt cards expose pending and failed submission state, rejected text returns to the composer, and abort restores cleared steering then follow-up text before any newer draft.
 - Typed Pi RPC activity now renders thinking, correlated tool arguments/updates/results, edit diffs, retries, compaction, and errors through expandable selectable surfaces with bounded automation names.
-- The analyzer build completes with no warnings; 45 deterministic protocol/process tests pass, and the current end-to-end UI suite passes 16 scenarios including rapid selection, abort, new session, project replacement, and clean shutdown.
+- The analyzer build completes with no warnings; 45 deterministic protocol/process tests pass; the 17-scenario fake-RPC UI suite covers activity rendering, keyboard/copy access, safe Markdown, and large-output responsiveness; and the earlier real-Pi suite passes 16 lifecycle scenarios.
 
 ## High-priority findings
 
@@ -33,9 +33,9 @@ PiDesk is a sound native WinUI proof of concept and a useful Pi RPC chat client.
 
 Pi RPC exposes switching, entries, tree navigation, fork, clone, naming, and export. PiDesk currently exposes only atomic New session and project replacement, although both now restore the active message path.
 
-### Rich activity needs dedicated UI verification
+### Session workflows remain incomplete
 
-The new activity cards and safe Markdown renderer build over deterministic Pi RPC fixtures, but their keyboard expansion, copy behavior, layout, and automation summaries still require a retained UI Automation run before Milestone 1 can be closed.
+Milestone 1 activity rendering now has retained deterministic UI evidence. The next major product gap is session browsing and branching: switch, fork, clone, naming, export, and tree navigation still require the Milestone 2 entry investigation and implementation.
 
 ## Other findings
 

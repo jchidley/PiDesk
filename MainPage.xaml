@@ -141,6 +141,7 @@
                     <DataTemplate x:DataType="models:ChatMessage">
                         <Border
                             Padding="16,12"
+                            AutomationProperties.AutomationId="{x:Bind ItemAutomationId}"
                             AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
                             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -162,26 +163,36 @@
                                         Style="{StaticResource CaptionTextBlockStyle}"
                                         Text="{x:Bind Role, Mode=OneWay}" />
                                     <controls:SafeMarkdownBlock
+                                        AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
+                                        ContentAutomationId="{x:Bind ContentAutomationId}"
                                         Text="{x:Bind Text, Mode=OneWay}"
                                         Visibility="{x:Bind local:MainPage.InvertBoolToVisibility(IsExpandable), Mode=OneWay}" />
                                     <Expander
-                                        AutomationProperties.AutomationId="{x:Bind ActivityKey, Mode=OneWay}"
+                                        AutomationProperties.AutomationId="{x:Bind ExpanderAutomationId}"
                                         AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
                                         Header="{x:Bind Summary, Mode=OneWay}"
+                                        HorizontalContentAlignment="Stretch"
                                         IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}"
                                         Visibility="{x:Bind local:MainPage.BoolToVisibility(IsExpandable), Mode=OneWay}">
-                                        <StackPanel Spacing="8">
+                                        <StackPanel
+                                            x:Name="DetailContent"
+                                            x:Load="{x:Bind IsExpanded, Mode=OneWay}"
+                                            Spacing="8">
                                             <TextBlock
                                                 FontWeight="SemiBold"
                                                 Text="Arguments"
                                                 Visibility="{x:Bind local:MainPage.BoolToVisibility(HasArguments), Mode=OneWay}" />
                                             <TextBlock
+                                                AutomationProperties.AutomationId="{x:Bind ArgumentsAutomationId}"
+                                                AutomationProperties.Name="Arguments"
                                                 FontFamily="Cascadia Mono"
                                                 IsTextSelectionEnabled="True"
                                                 Text="{x:Bind Arguments, Mode=OneWay}"
                                                 TextWrapping="Wrap"
                                                 Visibility="{x:Bind local:MainPage.BoolToVisibility(HasArguments), Mode=OneWay}" />
                                             <TextBlock
+                                                AutomationProperties.AutomationId="{x:Bind DetailAutomationId}"
+                                                AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
                                                 FontFamily="Cascadia Mono"
                                                 IsTextSelectionEnabled="True"
                                                 Text="{x:Bind Text, Mode=OneWay}"

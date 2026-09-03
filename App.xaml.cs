@@ -50,6 +50,17 @@ public partial class App : Application
     /// <param name="args">Details about the launch request and process.</param>
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
+#if DEBUG
+        const string fixtureOption = "--ui-test-rpc=";
+        var fixtureArgument = Environment.GetCommandLineArgs()
+            .Append(args.Arguments)
+            .FirstOrDefault(argument => argument.StartsWith(fixtureOption, StringComparison.Ordinal));
+        if (fixtureArgument is not null)
+        {
+            var fixturePath = fixtureArgument[fixtureOption.Length..].Trim().Trim('"');
+            Environment.SetEnvironmentVariable("PIDESK_UI_TEST_RPC_SCRIPT", fixturePath);
+        }
+#endif
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
         Window = new MainWindow();
         Window.Activate();

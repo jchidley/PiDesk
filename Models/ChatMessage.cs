@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using PiDesk.Services;
 
@@ -43,6 +45,11 @@ public partial class ChatMessage : ObservableObject
     public string? ActivityKey { get; }
     public bool IsExpandable { get; protected set; }
     public bool HasArguments => !string.IsNullOrWhiteSpace(Arguments);
+    public string ItemAutomationId => AutomationId("Item");
+    public string ContentAutomationId => AutomationId("Content");
+    public string ExpanderAutomationId => AutomationId("Expander");
+    public string ArgumentsAutomationId => AutomationId("Arguments");
+    public string DetailAutomationId => AutomationId("Detail");
     public string Summary => Summarize(
         !string.IsNullOrWhiteSpace(Text) ? Text : !string.IsNullOrWhiteSpace(Arguments) ? Arguments : State,
         240);
@@ -50,8 +57,10 @@ public partial class ChatMessage : ObservableObject
     {
         get
         {
-            var state = string.IsNullOrWhiteSpace(State) ? DeliveryStatus : State;
-            var parts = new[] { Role, state, Summarize(Text, 160) }
+            var state = !string.IsNullOrWhiteSpace(State)
+                ? State
+                : !string.IsNullOrWhiteSpace(DeliveryStatus) ? DeliveryStatus : "Accepted";
+            var parts = new[] { Summarize(Role, 48), state, Summarize(Text, 120) }
                 .Where(part => !string.IsNullOrWhiteSpace(part));
             return string.Join(", ", parts);
         }
@@ -99,6 +108,18 @@ public partial class ChatMessage : ObservableObject
         OnPropertyChanged(nameof(AutomationName));
     }
 
+    private string AutomationId(string prefix)
+    {
+        var key = string.IsNullOrWhiteSpace(ActivityKey) ? Role : ActivityKey;
+        var safeKey = new string(key.Select(character => char.IsAsciiLetterOrDigit(character) ? character : '-').ToArray());
+        if (safeKey.Length > 80)
+        {
+            var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)))[..12];
+            safeKey = $"{safeKey[..64]}-{hash}";
+        }
+        return $"{prefix}-{safeKey}";
+    }
+
     private static string Summarize(string value, int maximumLength)
     {
         var summary = string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
@@ -109,7 +130,8 @@ public partial class ChatMessage : ObservableObject
 public sealed class UserTextMessage : ChatMessage
 {
     public UserTextMessage(string text, string? key = null, MessageDeliveryState delivery = MessageDeliveryState.Accepted)
-        : base("You", text, "\uE77B", deliveryState: delivery, activityKey: key) { }
+        : base("You", text, "\uE77B", deliveryState: delivery,
+            activityKey: key ?? $"local-{Guid.NewGuid():N}") { }
 }
 
 public sealed class AssistantTextMessage : ChatMessage

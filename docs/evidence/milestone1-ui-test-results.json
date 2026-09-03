@@ -1,0 +1,70 @@
+[
+  {
+    "status": "PASS",
+    "name": "Deterministic typed RPC fixture becomes ready"
+  },
+  {
+    "status": "PASS",
+    "name": "Safe Markdown renders links and local paths as literal text"
+  },
+  {
+    "status": "PASS",
+    "name": "Safe Markdown does not load images or interpret raw HTML"
+  },
+  {
+    "status": "PASS",
+    "name": "Safe Markdown retains code blocks and unsupported syntax"
+  },
+  {
+    "status": "PASS",
+    "name": "Thinking streams and completes"
+  },
+  {
+    "status": "PASS",
+    "name": "Read tool exposes streaming update before final result"
+  },
+  {
+    "status": "PASS",
+    "name": "Edit diff is first-class activity"
+  },
+  {
+    "status": "PASS",
+    "name": "Failed tool exposes bounded diagnostic state"
+  },
+  {
+    "status": "PASS",
+    "name": "First activity run settles"
+  },
+  {
+    "status": "PASS",
+    "name": "Thinking expands and collapses by keyboard"
+  },
+  {
+    "status": "PASS",
+    "name": "Tool expands by keyboard and exposes validated arguments"
+  },
+  {
+    "status": "PASS",
+    "name": "Expanded tool output supports keyboard copy"
+  },
+  {
+    "status": "PASS",
+    "name": "Role tool state and content automation names are bounded"
+  },
+  {
+    "status": "PASS",
+    "name": "Ten-thousand-line streaming update remains collapsed and operable"
+  },
+  {
+    "status": "PASS",
+    "name": "Stop remains responsive during large output"
+  },
+  {
+    "status": "PASS",
+    "name": "Complete ten-thousand-line output remains available in one control"
+  },
+  {
+    "status": "PASS",
+    "name": "Fixture app closes cleanly"
+  }
+]

@@ -6,9 +6,9 @@ Work must proceed in milestone order. Visual polish must not outrun protocol cor
 
 ## Current status
 
-**Current milestone:** Milestone 1 — Faithful agent activity rendering
+**Current milestone:** Milestone 2 — Sessions and branching
 
-Milestone 0 is complete against Pi 0.84.4. The shared transport is bounded and generation-safe; `PiSessionService` owns typed protocol and lifecycle handling, atomic snapshots, candidate project replacement, prompt acceptance, queue recovery, serialized state-changing commands, and generation-safe latest-selection-wins selectors. Milestone 1 now reduces typed RPC activity into distinct user, assistant, thinking, tool, diff, retry, compaction, and error presentation models. It correlates interleaved argument streams, restores thinking, tool arguments/results, and diffs from typed `get_messages`, exposes expandable selectable detail surfaces with bounded automation summaries, and retains 10,000-line output as one activity item/control. Markdown headings, lists, emphasis, inline code, and fenced code are rendered under a documented side-effect-free link/image/HTML policy. The deterministic suite now has 44 tests, and the current 16-scenario real-Pi UI smoke covers startup, rapid selector changes, prompt/settle, abort, new session, project replacement, accessibility identifiers, and clean parent/child shutdown. Six previously recorded semantic mutations were killed across framing, retention, generation, version-gate, and required-field contracts; one recorded survivor exposed an unreachable large-single-chunk fixture path rather than a contract gap.
+Milestones 0 and 1 are complete against Pi 0.84.4. The shared transport is bounded and generation-safe; `PiSessionService` owns typed protocol and lifecycle handling, atomic snapshots, candidate project replacement, prompt acceptance, queue recovery, serialized state-changing commands, and generation-safe latest-selection-wins selectors. Conversation rendering reduces only typed RPC activity into distinct user, assistant, thinking, tool, diff, retry, compaction, and error presentation models. It correlates interleaved argument streams, restores thinking, tool arguments/results, and diffs from typed `get_messages`, exposes expandable selectable detail surfaces with bounded automation summaries, and defers collapsed detail creation so a 10,000-line output remains one responsive control. Markdown headings, lists, emphasis, inline code, and fenced code are rendered under a documented side-effect-free link/image/HTML policy. The deterministic protocol suite has 45 tests. A retained 17-scenario fake-RPC UI run covers keyboard expansion, streaming and final tool states, edit diffs, failed tools, selection/copy, bounded automation names, 10,000-line output and Stop responsiveness, safe Markdown, and clean shutdown; the earlier retained 16-scenario real-Pi smoke continues to cover startup, selectors, prompt/settle, abort, new session, project replacement, and parent/child shutdown.
 
 | Slice | Status | Evidence |
 |---|---|---|
@@ -170,6 +170,10 @@ Completed against Pi 0.84.4: all six slices pass in the 37-test deterministic su
 - Keyboard and screen-reader users can identify role, tool, state, and content and can expand, collapse, select, and copy without pointer input.
 - A fixture containing at least 10,000 output lines remains operable during streaming, does not block Stop, and does not create one visible control per collapsed line.
 - External or unsupported Markdown content follows the documented content policy rather than executing or opening silently.
+
+### Milestone 1 acceptance
+
+Completed with 45 passing deterministic protocol tests, a warning-free x64 analyzer build, and the retained 17-scenario deterministic UI Automation evidence in `docs/evidence/milestone1-ui-test-results.json`. The UI fixture launches a Debug-only fake Pi RPC child and reaches the presentation exclusively through `PiSessionService`, typed events, typed `get_messages`, and `PiActivityReducer`. No model request, Pi session-file access, or ViewModel-synthesized backend outcome is used.
 
 ## Milestone 2 — Sessions and branching
 

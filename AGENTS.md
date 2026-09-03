@@ -7,7 +7,8 @@
 | Analyzer build | `./BuildAndRun.ps1 . --no-launch --arch x64` |
 | Protocol tests | `dotnet test tests/PiDesk.Tests/PiDesk.Tests.csproj` |
 | Run attached | `./BuildAndRun.ps1` |
-| UI tests | `./ui-tests.ps1 -AppPid <PID>` |
+| Real-Pi UI smoke | `./ui-tests.ps1 -AppPid <PID>` |
+| Milestone 1 fixture UI | Launch with `--args "--ui-test-rpc=<fixture>"`, then `./milestone1-ui-tests.ps1 -AppPid <PID>` |
 
 Run commands from the repository root in PowerShell 7. `BuildAndRun.ps1` remains attached while PiDesk is open; elapsed shell time includes application runtime. UI tests send a real model prompt and may incur provider cost.
 

@@ -28,6 +28,19 @@ internal static class PiRuntimeResolver
 {
     public static PiRuntimeInfo Resolve()
     {
+#if DEBUG
+        var testScript = Environment.GetEnvironmentVariable("PIDESK_UI_TEST_RPC_SCRIPT");
+        if (!string.IsNullOrWhiteSpace(testScript))
+        {
+            var fullPath = Path.GetFullPath(testScript);
+            if (!File.Exists(fullPath))
+            {
+                throw new FileNotFoundException("The PiDesk UI-test RPC fixture was not found.", fullPath);
+            }
+
+            return new PiRuntimeInfo("node.exe", fullPath, PiSessionService.SupportedPiVersion);
+        }
+#endif
         var path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
         foreach (var directoryValue in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {

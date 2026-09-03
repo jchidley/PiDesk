@@ -39,13 +39,24 @@ The fake RPC child requires `node.exe` on `PATH`, matching PiDesk's Pi runtime p
 
 Conversation activity is sourced only from typed Pi RPC events and `get_messages` snapshots. The deterministic suite verifies event ordering, interleaved tool correlation, restored thinking and tool state, diff retention, and a 10,000-line tool update before UI testing. Markdown rendering is deliberately non-navigating; see [the conversation content policy](content-policy.md).
 
-Launch PiDesk, copy the reported PID, then run:
+For deterministic Milestone 1 acceptance, launch the Debug app with the fake RPC child, copy the reported PID, then run the dedicated suite:
+
+```powershell
+$env:NuGetAudit = 'false'
+$fixture = (Resolve-Path tests/ui-fixtures/milestone1-rpc.js).Path
+./BuildAndRun.ps1 . --detach --json --arch x64 --args "--ui-test-rpc=$fixture"
+./milestone1-ui-tests.ps1 -AppPid <PID> -CloseApp
+```
+
+The `--ui-test-rpc` override is compiled only in Debug builds. The 17-scenario suite makes no provider request: its JSONL records pass through the production RPC client, typed session service, activity reducer, ViewModel, and XAML. It covers safe Markdown, streaming and final tool states, failed tools, first-class diffs, keyboard expansion, selection/copy, bounded automation names, responsive 10,000-line output, Stop, and clean shutdown. Retained results are in `docs/evidence/milestone1-ui-test-results.json`; the reviewed screenshot is `docs/images/milestone1-activity.png`.
+
+For the bounded real-Pi smoke, launch PiDesk normally and run:
 
 ```powershell
 ./ui-tests.ps1 -AppPid <PID>
 ```
 
-The test sends one small deterministic-answer prompt plus one prompt that is immediately aborted and may incur a small provider charge. It verifies connection, rapid thinking selection, atomic new session, prompt streaming and settlement, usage reporting, abort recovery, same-folder project replacement with a new Pi child, AutomationId coverage, and optional clean parent/child shutdown. Pass `-CloseApp` to include shutdown verification. Generated results and screenshots are written under `artifacts/ui-tests/`; the repository keeps only deliberately reviewed evidence under `docs/evidence/` and `docs/images/`.
+The real-Pi test sends one small deterministic-answer prompt plus one prompt that is immediately aborted and may incur a small provider charge. It verifies connection, rapid thinking selection, atomic new session, prompt streaming and settlement, usage reporting, abort recovery, same-folder project replacement with a new Pi child, AutomationId coverage, and optional clean parent/child shutdown. Pass `-CloseApp` to include shutdown verification. Generated results and screenshots are written under `artifacts/ui-tests/`; the repository keeps only deliberately reviewed evidence under `docs/evidence/` and `docs/images/`.
 
 ## Diagnostic output
 

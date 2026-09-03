@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
@@ -16,6 +17,10 @@ public sealed partial class SafeMarkdownBlock : UserControl
         nameof(Text), typeof(string), typeof(SafeMarkdownBlock),
         new PropertyMetadata(string.Empty, OnTextChanged));
 
+    public static readonly DependencyProperty ContentAutomationIdProperty = DependencyProperty.Register(
+        nameof(ContentAutomationId), typeof(string), typeof(SafeMarkdownBlock),
+        new PropertyMetadata(string.Empty, OnContentAutomationIdChanged));
+
     public SafeMarkdownBlock()
     {
         InitializeComponent();
@@ -25,6 +30,18 @@ public sealed partial class SafeMarkdownBlock : UserControl
     {
         get => (string)GetValue(TextProperty);
         set => SetValue(TextProperty, value);
+    }
+
+    public string ContentAutomationId
+    {
+        get => (string)GetValue(ContentAutomationIdProperty);
+        set => SetValue(ContentAutomationIdProperty, value);
+    }
+
+    private static void OnContentAutomationIdChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args)
+    {
+        var control = (SafeMarkdownBlock)sender;
+        AutomationProperties.SetAutomationId(control.ContentBlock, args.NewValue as string ?? string.Empty);
     }
 
     private static void OnTextChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args)
