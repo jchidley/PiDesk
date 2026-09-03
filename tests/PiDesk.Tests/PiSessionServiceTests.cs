@@ -123,8 +123,13 @@ public sealed class PiSessionProtocolTests
         Assert.Equal("s", Assert.Single(queue.Steering));
         Assert.Collection(messages,
             item => Assert.Equal((PiConversationItemKind.User, "question"), (item.Kind, item.Text)),
+            item => Assert.Equal((PiConversationItemKind.Thinking, "hidden"), (item.Kind, item.Text)),
             item => Assert.Equal((PiConversationItemKind.Assistant, "answer"), (item.Kind, item.Text)),
-            item => Assert.Equal((PiConversationItemKind.Tool, "read completed"), (item.Kind, item.Text)));
+            item =>
+            {
+                Assert.Equal((PiConversationItemKind.Tool, "read completed"), (item.Kind, item.Text));
+                Assert.Equal("output", item.ResultText);
+            });
         Assert.True(PiProtocolParser.ParseCancelled(Parse("""{"data":{"cancelled":true}}""")));
     }
 

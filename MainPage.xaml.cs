@@ -1,9 +1,11 @@
 using System.Collections.Specialized;
+using System.ComponentModel;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
+using PiDesk.Models;
 using PiDesk.Services;
 using PiDesk.ViewModels;
 using Windows.Storage.Pickers;
@@ -28,9 +30,7 @@ public sealed partial class MainPage : Page
     }
 
     public static Visibility BoolToVisibility(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
-
-    public static FontFamily MessageFont(bool isActivity) =>
-        new(isActivity ? "Cascadia Mono" : "Segoe UI Variable Text");
+    public static Visibility InvertBoolToVisibility(bool value) => value ? Visibility.Collapsed : Visibility.Visible;
 
     private async void MainPage_Loaded(object sender, RoutedEventArgs e)
     {
@@ -89,9 +89,42 @@ public sealed partial class MainPage : Page
 
     private void Messages_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        if (e.OldItems is not null)
+        {
+            foreach (ChatMessage message in e.OldItems)
+            {
+                message.PropertyChanged -= Message_PropertyChanged;
+            }
+        }
+        if (e.NewItems is not null)
+        {
+            foreach (ChatMessage message in e.NewItems)
+            {
+                message.PropertyChanged += Message_PropertyChanged;
+            }
+        }
         if (ViewModel.Messages.Count > 0)
         {
             ConversationList.ScrollIntoView(ViewModel.Messages[^1]);
+        }
+    }
+
+    private void ConversationList_ContainerContentChanging(
+        ListViewBase sender,
+        ContainerContentChangingEventArgs args)
+    {
+        if (args.ItemContainer is not null && args.Item is ChatMessage message)
+        {
+            AutomationProperties.SetName(args.ItemContainer, message.AutomationName);
+        }
+    }
+
+    private void Message_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (sender is ChatMessage message &&
+            ConversationList.ContainerFromItem(message) is ListViewItem container)
+        {
+            AutomationProperties.SetName(container, message.AutomationName);
         }
     }
 

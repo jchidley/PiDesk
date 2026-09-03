@@ -87,14 +87,32 @@ public sealed class PiActivityReducerTests
     {
         var reducer = new PiActivityReducer();
         var restored = PiProtocolParser.ParseMessages(Parse(
-            """{"data":{"messages":[{"role":"user","content":"question"},{"role":"assistant","content":[{"type":"text","text":"answer"}]},{"role":"toolResult","toolCallId":"call-read","toolName":"read","content":[{"type":"text","text":"file text"}],"isError":false}]}}"""));
+            """{"data":{"messages":[{"role":"user","content":"question"},{"role":"assistant","content":[{"type":"thinking","thinking":"inspect first"},{"type":"text","text":"answer"},{"type":"toolCall","id":"call-read","name":"read","arguments":{"path":"a.txt"}}]},{"role":"toolResult","toolCallId":"call-read","toolName":"read","content":[{"type":"text","text":"file text"}],"details":{"diff":"-old\n+new","patch":"--- a\n+++ a"},"isError":false}]}}"""));
 
         reducer.Reset(restored);
 
-        Assert.Equal([PiActivityKind.UserText, PiActivityKind.AssistantText, PiActivityKind.Tool],
+        Assert.Equal(
+            [PiActivityKind.UserText, PiActivityKind.Thinking, PiActivityKind.AssistantText, PiActivityKind.Tool],
             reducer.Items.Select(item => item.Kind));
-        var tool = reducer.Items[2];
+        Assert.Equal("inspect first", reducer.Items[1].Text);
+        var tool = reducer.Items[3];
         Assert.Equal(("call-read", "read", "file text"), (tool.Key, tool.ToolName, tool.Text));
+        Assert.Equal("{\"path\":\"a.txt\"}", tool.ArgumentsJson);
+        Assert.Equal("-old\n+new", tool.Diff?.Diff);
+    }
+
+    [Fact]
+    public void TypedGetMessagesRestoresAssistantErrorsAsErrorActivity()
+    {
+        var restored = PiProtocolParser.ParseMessages(Parse(
+            """{"data":{"messages":[{"role":"assistant","content":[],"stopReason":"error","errorMessage":"request failed"}]}}"""));
+        var reducer = new PiActivityReducer();
+
+        reducer.Reset(restored);
+
+        var error = Assert.Single(reducer.Items);
+        Assert.Equal((PiActivityKind.Error, PiActivityState.Failed, "request failed"),
+            (error.Kind, error.State, error.Text));
     }
 
     [Fact]

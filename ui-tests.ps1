@@ -64,6 +64,12 @@ Test-UI 'Composer accepts text' { winapp ui set-value PromptBox 'Reply with only
 Test-UI 'Send enables for a non-empty prompt' { winapp ui wait-for SendButton -w $mainHwnd -p IsEnabled --value True -t 3000 }
 Test-UI 'Prompt can be sent' { winapp ui invoke SendButton -w $mainHwnd }
 Test-UI 'Assistant response is shown' { winapp ui wait-for 92 -w $mainHwnd -t 90000 }
+Test-UI 'Conversation items expose role state and summary' {
+    $matches = (winapp ui search 'Pi, Completed' -w $mainHwnd --json 2>$null | ConvertFrom-Json).matches
+    if (-not ($matches | Where-Object { $_.type -eq 'ListItem' -and $_.name -match '^Pi, Completed, 92' })) {
+        throw 'Completed assistant item has no useful bounded automation name'
+    }
+}
 Test-UI 'Agent run settles' { winapp ui wait-for StatusText -w $mainHwnd --value Ready -t 10000 }
 Test-UI 'Session usage is updated' {
     $value = Get-UIValue UsageText

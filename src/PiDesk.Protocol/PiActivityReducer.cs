@@ -51,22 +51,41 @@ public sealed class PiActivityReducer
 
     public void Reset(IEnumerable<PiConversationItem> restoredMessages)
     {
-        Reset(restoredMessages.Select(message => message.Kind switch
+        Reset(Array.Empty<PiActivityItem>());
+        foreach (var message in restoredMessages)
         {
-            PiConversationItemKind.User => new PiActivityItem(
-                $"restored-{++_nextKey}", PiActivityKind.UserText, "You", message.Text, PiActivityState.Completed),
-            PiConversationItemKind.Assistant => new PiActivityItem(
-                $"restored-{++_nextKey}", PiActivityKind.AssistantText, "Pi", message.Text,
-                message.IsError ? PiActivityState.Failed : PiActivityState.Completed),
-            PiConversationItemKind.Tool => new PiActivityItem(
-                message.CorrelationId ?? $"restored-{++_nextKey}", PiActivityKind.Tool,
-                message.ToolName ?? "Tool", message.ResultText ?? message.Text,
-                message.IsError ? PiActivityState.Failed : PiActivityState.Completed,
-                message.ToolName ?? "Tool"),
-            _ => new PiActivityItem(
-                $"restored-{++_nextKey}", PiActivityKind.Compaction, "Activity", message.Text,
-                message.IsError ? PiActivityState.Failed : PiActivityState.Completed),
-        }));
+            var key = message.CorrelationId ?? $"restored-{++_nextKey}";
+            switch (message.Kind)
+            {
+                case PiConversationItemKind.User:
+                    _items.Add(new PiActivityItem(key, PiActivityKind.UserText, "You", message.Text, PiActivityState.Completed));
+                    break;
+                case PiConversationItemKind.Assistant:
+                    _items.Add(new PiActivityItem(
+                        key,
+                        message.IsError ? PiActivityKind.Error : PiActivityKind.AssistantText,
+                        message.IsError ? "Pi error" : "Pi",
+                        message.Text,
+                        message.IsError ? PiActivityState.Failed : PiActivityState.Completed));
+                    break;
+                case PiConversationItemKind.Thinking:
+                    _items.Add(new PiActivityItem(key, PiActivityKind.Thinking, "Thinking", message.Text,
+                        PiActivityState.Completed));
+                    break;
+                case PiConversationItemKind.ToolCall:
+                    UpsertTool(key, message.ToolName ?? "Tool", message.ArgumentsJson, null, PiActivityState.Pending, null);
+                    break;
+                case PiConversationItemKind.Tool:
+                    UpsertTool(key, message.ToolName ?? "Tool", message.ArgumentsJson,
+                        message.ResultText ?? message.Text,
+                        message.IsError ? PiActivityState.Failed : PiActivityState.Completed, message.Diff);
+                    break;
+                default:
+                    _items.Add(new PiActivityItem(key, PiActivityKind.Compaction, "Activity", message.Text,
+                        message.IsError ? PiActivityState.Failed : PiActivityState.Completed));
+                    break;
+            }
+        }
     }
 
     public void Reset(IEnumerable<PiActivityItem> restoredItems)

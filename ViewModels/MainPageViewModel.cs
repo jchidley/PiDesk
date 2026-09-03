@@ -11,7 +11,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 {
     private readonly DispatcherQueue _dispatcher;
     private readonly PiSessionService _session = new();
-    private ChatMessage? _streamingMessage;
+    private readonly PiActivityReducer _activityReducer = new();
     private bool _syncingSelectors;
     private long _visibleSessionGeneration;
     private long _modelSelectionVersion;
@@ -142,8 +142,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         }
 
         PromptText = string.Empty;
-        var message = new ChatMessage(
-            "You", text, "\uE77B", deliveryState: MessageDeliveryState.Pending);
+        var message = new UserTextMessage(text, delivery: MessageDeliveryState.Pending);
         Messages.Add(message);
         NotifyMessagesChanged();
 
@@ -278,12 +277,15 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             _syncingSelectors = false;
         }
 
+        _activityReducer.Reset(snapshot.Messages);
         Messages.Clear();
-        foreach (var message in snapshot.Messages)
+        foreach (var activity in _activityReducer.Items)
         {
-            Messages.Add(ToChatMessage(message));
+            foreach (var message in ActivityMessageFactory.Create(activity))
+            {
+                Messages.Add(message);
+            }
         }
-        _streamingMessage = null;
         NotifyMessagesChanged();
         IsStreaming = snapshot.State.IsStreaming;
         SessionSummary = !string.IsNullOrWhiteSpace(snapshot.State.SessionName)
@@ -291,14 +293,6 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             : $"Session {snapshot.State.SessionId[..Math.Min(8, snapshot.State.SessionId.Length)]}";
         UsageSummary = FormatUsage(snapshot.Stats);
     }
-
-    private static ChatMessage ToChatMessage(PiConversationItem message) => message.Kind switch
-    {
-        PiConversationItemKind.User => new ChatMessage("You", message.Text, "\uE77B"),
-        PiConversationItemKind.Assistant => new ChatMessage("Pi", message.Text, "\uE8BD"),
-        PiConversationItemKind.Tool => new ChatMessage("Tool", message.Text, "\uE756", isActivity: true, correlationId: message.CorrelationId),
-        _ => new ChatMessage("Activity", message.Text, "\uE7BA", isActivity: true),
-    };
 
     private static string FormatUsage(PiSessionStats stats)
     {
@@ -457,6 +451,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
         await RunOnUiAsync(() =>
         {
+            _activityReducer.Apply(message);
+            SyncActivityMessages();
             switch (message)
             {
                 case AgentStartedEvent:
@@ -465,28 +461,18 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                     break;
                 case AgentSettledEvent:
                     IsStreaming = false;
-                    _streamingMessage = null;
                     _statsRefreshTask = RefreshStatsAfterAsync(_statsRefreshTask, _visibleSessionGeneration);
-                    break;
-                case AssistantTextDeltaEvent update:
-                    _streamingMessage ??= AddAssistantMessage();
-                    _streamingMessage.Text += update.Delta;
-                    break;
-                case AssistantMessageEndedEvent completed:
-                    HandleMessageEnd(completed);
-                    break;
-                case ToolStartedEvent tool:
-                    Messages.Add(new ChatMessage("Tool", $"Running {tool.Name}…", "\uE756", isActivity: true, correlationId: tool.Id));
-                    NotifyMessagesChanged();
-                    break;
-                case ToolEndedEvent tool:
-                    HandleToolEnd(tool);
                     break;
                 case RetryStartedEvent retry:
                     StatusText = $"Retrying in {retry.DelayMilliseconds / 1000.0:0.#} seconds…";
                     break;
                 case CompactionStartedEvent:
                     StatusText = "Compacting session context…";
+                    break;
+                case AssistantMessageEndedEvent { StopReason: "error" } failed:
+                    ShowError(failed.ErrorMessage ?? (string.IsNullOrEmpty(failed.Text)
+                        ? "Pi could not complete the response."
+                        : failed.Text));
                     break;
                 case ExtensionFailedEvent failed:
                     ShowError(failed.Error);
@@ -496,35 +482,45 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         });
     }
 
-    private void HandleMessageEnd(AssistantMessageEndedEvent completed)
+    private void SyncActivityMessages()
     {
-        if (!string.IsNullOrEmpty(completed.Text))
+        foreach (var activity in _activityReducer.Items)
         {
-            _streamingMessage ??= AddAssistantMessage();
-            _streamingMessage.Text = completed.Text;
-        }
+            foreach (var desired in ActivityMessageFactory.Create(activity))
+            {
+                var existingIndex = Messages
+                    .Select((message, index) => (message, index))
+                    .Where(pair => pair.message.ActivityKey == desired.ActivityKey)
+                    .Select(pair => pair.index)
+                    .DefaultIfEmpty(-1)
+                    .First();
+                if (existingIndex >= 0 && Messages[existingIndex].GetType() == desired.GetType())
+                {
+                    Messages[existingIndex].Update(activity);
+                    continue;
+                }
 
-        if (completed.StopReason == "error")
-        {
-            ShowError(string.IsNullOrEmpty(completed.Text) ? "Pi could not complete the response." : completed.Text);
+                if (existingIndex >= 0)
+                {
+                    Messages[existingIndex] = desired;
+                }
+                else if (desired is DiffMessage)
+                {
+                    var parentIndex = Messages
+                        .Select((item, index) => (item, index))
+                        .Where(pair => pair.item.ActivityKey == activity.Key)
+                        .Select(pair => pair.index)
+                        .DefaultIfEmpty(Messages.Count - 1)
+                        .First();
+                    Messages.Insert(parentIndex + 1, desired);
+                }
+                else
+                {
+                    Messages.Add(desired);
+                }
+            }
         }
-    }
-
-    private ChatMessage AddAssistantMessage()
-    {
-        var item = new ChatMessage("Pi", string.Empty, "\uE8BD");
-        Messages.Add(item);
         NotifyMessagesChanged();
-        return item;
-    }
-
-    private void HandleToolEnd(ToolEndedEvent tool)
-    {
-        var item = Messages.LastOrDefault(candidate => candidate.CorrelationId == tool.Id);
-        if (item is not null)
-        {
-            item.Text = tool.IsError ? $"{tool.Name} failed" : $"{tool.Name} completed";
-        }
     }
 
     private async Task RefreshStatsAfterAsync(Task previousRefresh, long generation)

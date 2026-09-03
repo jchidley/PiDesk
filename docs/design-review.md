@@ -2,7 +2,7 @@
 
 This review records the current quality and completeness of PiDesk against Pi 0.84.4 and the upstream Microsoft WinUI development skills. It is a point-in-time assessment, not the implementation plan; implementation status and planned work belong in [the improvement plan](improvement-plan.md).
 
-The latest implementation review verified a warning-free analyzer build, 44 deterministic protocol/process tests, and a 16-scenario real-Pi UI smoke test against Pi 0.84.4. The shared production library combines bounded transport handling with a typed session service, explicit lifecycle states, restored session snapshots, non-destructive candidate project startup, prompt and queue recovery, serialized mutations, and generation-safe latest-selection-wins selectors. Focused mutation trials from the preceding slices killed six semantic defects across exact record-size handling, CRLF normalization, stale-generation suppression, newest-stderr retention, version validation, and required response fields. One recorded survivor identified a fixture-unreachable large-single-chunk path rather than a missing externally exercised contract.
+The latest implementation review verified a warning-free analyzer build, 45 deterministic protocol/process tests, and a 16-scenario real-Pi UI smoke test against Pi 0.84.4. The shared production library combines bounded transport handling with a typed session service, explicit lifecycle states, restored session snapshots, non-destructive candidate project startup, prompt and queue recovery, serialized mutations, and generation-safe latest-selection-wins selectors. Focused mutation trials from the preceding slices killed six semantic defects across exact record-size handling, CRLF normalization, stale-generation suppression, newest-stderr retention, version validation, and required response fields. One recorded survivor identified a fixture-unreachable large-single-chunk path rather than a missing externally exercised contract.
 
 ## Verdict
 
@@ -24,7 +24,8 @@ PiDesk is a sound native WinUI proof of concept and a useful Pi RPC chat client.
 - The ViewModel and extension-dialog path now consume typed protocol models rather than traversing `JsonElement` records.
 - Startup and session replacement restore the active message path and usage before applying visible state; failed candidate projects leave the prior session usable.
 - Prompt cards expose pending and failed submission state, rejected text returns to the composer, and abort restores cleared steering then follow-up text before any newer draft.
-- The analyzer build completes with no warnings; 44 deterministic protocol/process tests pass, and the current end-to-end UI suite passes 16 scenarios including rapid selection, abort, new session, project replacement, and clean shutdown.
+- Typed Pi RPC activity now renders thinking, correlated tool arguments/updates/results, edit diffs, retries, compaction, and errors through expandable selectable surfaces with bounded automation names.
+- The analyzer build completes with no warnings; 45 deterministic protocol/process tests pass, and the current end-to-end UI suite passes 16 scenarios including rapid selection, abort, new session, project replacement, and clean shutdown.
 
 ## High-priority findings
 
@@ -32,16 +33,15 @@ PiDesk is a sound native WinUI proof of concept and a useful Pi RPC chat client.
 
 Pi RPC exposes switching, entries, tree navigation, fork, clone, naming, and export. PiDesk currently exposes only atomic New session and project replacement, although both now restore the active message path.
 
-### Coding activity is reduced to plain text
+### Rich activity needs dedicated UI verification
 
-The conversation currently presents assistant text plus `tool completed` or `tool failed`. It omits thinking, tool arguments, streaming output, final results, diffs, structured retry and compaction state, Markdown, and code formatting. This is the largest gap for a coding-agent UI.
+The new activity cards and safe Markdown renderer build over deterministic Pi RPC fixtures, but their keyboard expansion, copy behavior, layout, and automation summaries still require a retained UI Automation run before Milestone 1 can be closed.
 
 ## Other findings
 
 - The fixed header columns have no responsive breakpoints and can clip at narrow widths.
 - Full queue state is retained for abort recovery but is not yet displayed.
 - Transport diagnostics are retained in memory and publicly readable but are not yet exposed through a user-copyable UI.
-- Conversation items expose their CLR type rather than useful role/content names to UI Automation.
 - The non-dismissible error bar lacks a retry or reconnect action.
 - Pi command discovery, images, follow-up messages, session tree, and rich extension widgets are absent.
 

@@ -33,6 +33,8 @@ The visible command policy is:
 
 RPC requests started from an event must not be awaited by the stdout event callback. Post-settle usage refresh is therefore retained as a serialized background task, with failures observed and the task awaited during disposal.
 
+Conversation presentation consumes `PiActivityReducer` output through distinct user, assistant, thinking, tool, diff, retry, compaction, and error models. Thinking, tool output, arguments, and diffs are expandable and remain one selectable text surface regardless of line count. Assistant Markdown follows the side-effect-free [conversation content policy](content-policy.md): links and images never open or load during rendering, raw HTML remains literal, and unsupported syntax remains selectable text.
+
 ## Layer responsibilities
 
 Pi's tagged RPC sources are the canonical contract; PiDesk must not create a second independently authoritative protocol specification or domain core. `PiDesk.Protocol` is the adapter boundary: it owns transport, serialization, validation, compatibility checks, and typed state for the protocol surface PiDesk consumes. WinUI code consumes that typed boundary and must not traverse raw protocol JSON or reach into Pi-owned session storage.

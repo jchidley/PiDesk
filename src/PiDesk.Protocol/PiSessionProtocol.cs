@@ -25,6 +25,8 @@ public enum PiConversationItemKind
 {
     User,
     Assistant,
+    Thinking,
+    ToolCall,
     Tool,
     Activity,
 }
@@ -35,7 +37,9 @@ public sealed record PiConversationItem(
     string? CorrelationId = null,
     bool IsError = false,
     string? ToolName = null,
-    string? ResultText = null);
+    string? ResultText = null,
+    string? ArgumentsJson = null,
+    PiDiff? Diff = null);
 
 public sealed record PiSessionStats(double Cost, double? ContextPercent);
 
@@ -241,19 +245,16 @@ internal static class PiProtocolParser
         foreach (var message in messages.EnumerateArray())
         {
             var role = RequiredString(message, "role");
+            if (role == "assistant")
+            {
+                ParseAssistantContent(message, result);
+                continue;
+            }
+
             PiConversationItem? item = role switch
             {
                 "user" => new(PiConversationItemKind.User, ParseContent(message)),
-                "assistant" => new(PiConversationItemKind.Assistant, ParseContent(message)),
-                "toolResult" => new(
-                    PiConversationItemKind.Tool,
-                    RequiredBoolean(message, "isError")
-                        ? $"{RequiredString(message, "toolName")} failed"
-                        : $"{RequiredString(message, "toolName")} completed",
-                    OptionalString(message, "toolCallId"),
-                    RequiredBoolean(message, "isError"),
-                    RequiredString(message, "toolName"),
-                    ParseContent(message)),
+                "toolResult" => ParseRestoredToolResult(message),
                 "bashExecution" => new(
                     PiConversationItemKind.Tool,
                     OptionalString(message, "output") ?? string.Empty,
@@ -271,6 +272,57 @@ internal static class PiProtocolParser
             }
         }
         return result;
+    }
+
+    private static void ParseAssistantContent(JsonElement message, List<PiConversationItem> result)
+    {
+        var content = RequiredArray(message, "content");
+        var initialCount = result.Count;
+        var isError = OptionalString(message, "stopReason") == "error";
+        foreach (var block in content.EnumerateArray())
+        {
+            PiConversationItem? item = OptionalString(block, "type") switch
+            {
+                "text" => new(PiConversationItemKind.Assistant, RequiredString(block, "text"), IsError: isError),
+                "thinking" => new(PiConversationItemKind.Thinking, RequiredString(block, "thinking")),
+                "toolCall" => new(
+                    PiConversationItemKind.ToolCall,
+                    RequiredString(block, "name"),
+                    RequiredString(block, "id"),
+                    ToolName: RequiredString(block, "name"),
+                    ArgumentsJson: ParseToolArguments(block, "arguments").Json),
+                _ => null,
+            };
+            if (item is not null && !string.IsNullOrEmpty(item.Text))
+            {
+                result.Add(item);
+            }
+        }
+        if (isError && !result.Skip(initialCount).Any(item => item.Kind == PiConversationItemKind.Assistant && item.IsError) &&
+            OptionalString(message, "errorMessage") is { } errorMessage)
+        {
+            result.Add(new PiConversationItem(PiConversationItemKind.Assistant, errorMessage, IsError: true));
+        }
+    }
+
+    private static PiConversationItem ParseRestoredToolResult(JsonElement message)
+    {
+        var name = RequiredString(message, "toolName");
+        var isError = RequiredBoolean(message, "isError");
+        PiDiff? diff = null;
+        if (message.TryGetProperty("details", out var details) && details.ValueKind == JsonValueKind.Object &&
+            OptionalString(details, "diff") is { } diffText)
+        {
+            diff = new PiDiff(diffText, OptionalString(details, "patch"), OptionalInt32(details, "firstChangedLine"));
+        }
+        return new PiConversationItem(
+            PiConversationItemKind.Tool,
+            isError ? $"{name} failed" : $"{name} completed",
+            RequiredString(message, "toolCallId"),
+            isError,
+            name,
+            ParseContent(message),
+            Diff: diff);
     }
 
     public static bool ParseCancelled(JsonElement response) =>
