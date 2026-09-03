@@ -67,6 +67,16 @@ public sealed partial class MainPage : Page
         }
     }
 
+    private async void ModelCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        await ViewModel.ChangeModelAsync(e.AddedItems.OfType<Models.ModelOption>().FirstOrDefault());
+    }
+
+    private async void ThinkingCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        await ViewModel.ChangeThinkingLevelAsync(e.AddedItems.OfType<string>().FirstOrDefault());
+    }
+
     private void PromptBox_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         var controlState = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control);

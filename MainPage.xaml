@@ -45,6 +45,7 @@
                 HorizontalContentAlignment="Left"
                 AutomationProperties.Name="Choose project folder"
                 Click="FolderButton_Click"
+                IsEnabled="{x:Bind ViewModel.CanChooseProject, Mode=OneWay}"
                 ToolTipService.ToolTip="Choose the project Pi can work in">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <FontIcon FontSize="16" Glyph="&#xE8B7;" />
@@ -64,16 +65,20 @@
                 AutomationProperties.Name="Model"
                 DisplayMemberPath="DisplayName"
                 Header="Model"
+                IsEnabled="{x:Bind ViewModel.CanChangeSelectors, Mode=OneWay}"
                 ItemsSource="{x:Bind ViewModel.Models, Mode=OneWay}"
-                SelectedItem="{x:Bind ViewModel.SelectedModel, Mode=TwoWay}" />
+                SelectedItem="{x:Bind ViewModel.SelectedModel, Mode=TwoWay}"
+                SelectionChanged="ModelCombo_SelectionChanged" />
 
             <ComboBox
                 Grid.Column="2"
                 AutomationProperties.AutomationId="ThinkingCombo"
                 AutomationProperties.Name="Thinking level"
                 Header="Thinking"
+                IsEnabled="{x:Bind ViewModel.CanChangeThinking, Mode=OneWay}"
                 ItemsSource="{x:Bind ViewModel.ThinkingLevels, Mode=OneWay}"
-                SelectedItem="{x:Bind ViewModel.SelectedThinkingLevel, Mode=TwoWay}" />
+                SelectedItem="{x:Bind ViewModel.SelectedThinkingLevel, Mode=TwoWay}"
+                SelectionChanged="ThinkingCombo_SelectionChanged" />
 
             <Button
                 Grid.Column="3"

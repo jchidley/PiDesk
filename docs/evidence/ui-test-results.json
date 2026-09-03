@@ -1,6 +1,6 @@
 [
   {
-    "name": "Pi connects and becomes ready",
+    "name": "Pi 0.84.4 connects and becomes ready",
     "status": "PASS"
   },
   {
@@ -13,6 +13,10 @@
   },
   {
     "name": "Thinking selector is populated",
+    "status": "PASS"
+  },
+  {
+    "name": "Rapid thinking selection keeps the latest choice",
     "status": "PASS"
   },
   {
@@ -40,7 +44,23 @@
     "status": "PASS"
   },
   {
+    "name": "New session applies atomically",
+    "status": "PASS"
+  },
+  {
+    "name": "Abort settles without losing responsiveness",
+    "status": "PASS"
+  },
+  {
+    "name": "Project replacement starts a new usable process",
+    "status": "PASS"
+  },
+  {
     "name": "Interactive controls have AutomationIds",
+    "status": "PASS"
+  },
+  {
+    "name": "Clean shutdown exits PiDesk and its Pi child",
     "status": "PASS"
   }
 ]

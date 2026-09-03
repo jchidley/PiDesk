@@ -3,6 +3,14 @@ const behavior = process.argv[2] ?? "normal";
 const lifecyclePath = process.argv[3];
 let buffer = "";
 let pendingNewSession = null;
+let currentModel = { provider: "test", id: "model", name: "Test Model" };
+let currentThinkingLevel = "medium";
+
+function respond(command, data = undefined) {
+  const response = { type: "response", id: command.id, command: command.type, success: true };
+  if (data !== undefined) response.data = data;
+  process.stdout.write(JSON.stringify(response) + "\n");
+}
 
 if (lifecyclePath) {
   fs.appendFileSync(lifecyclePath, `start ${process.pid}\n`);
@@ -26,8 +34,8 @@ process.stdin.on("data", chunk => {
       process.stdout.write(JSON.stringify({
         type: "response", id: command.id, command: command.type,
         success: true, data: {
-          model: { provider: "test", id: "model", name: "Test Model" },
-          thinkingLevel: "medium", sessionId: "test-session", sessionName: "Test", isStreaming: false
+          model: currentModel,
+          thinkingLevel: currentThinkingLevel, sessionId: "test-session", sessionName: "Test", isStreaming: false
         }
       }) + "\n");
       if (behavior === "unknown") {
@@ -38,11 +46,35 @@ process.stdin.on("data", chunk => {
         setTimeout(() => process.stdout.write("x".repeat(16 * 1024 * 1024 + 1)), 20);
       }
     } else if (command.type === "get_available_models") {
-      process.stdout.write(JSON.stringify({ type: "response", id: command.id, command: command.type, success: true,
-        data: { models: [{ provider: "test", id: "model", name: "Test Model" }] } }) + "\n");
+      const models = behavior === "selector-delays"
+        ? [
+            { provider: "test", id: "model", name: "Test Model" },
+            { provider: "test", id: "model-a", name: "Model A" },
+            { provider: "test", id: "model-b", name: "Model B" }
+          ]
+        : [{ provider: "test", id: "model", name: "Test Model" }];
+      respond(command, { models });
     } else if (command.type === "get_available_thinking_levels") {
-      process.stdout.write(JSON.stringify({ type: "response", id: command.id, command: command.type, success: true,
-        data: { levels: ["off", "medium"] } }) + "\n");
+      const levels = behavior === "selector-delays" && currentModel.id === "model-b"
+        ? ["off", "high"]
+        : ["off", "medium"];
+      respond(command, { levels });
+    } else if (command.type === "set_model" && behavior === "selector-delays") {
+      const delay = command.modelId === "model-a" ? 180 : 15;
+      setTimeout(() => {
+        currentModel = { provider: command.provider, id: command.modelId,
+          name: command.modelId === "model-a" ? "Model A" : "Model B" };
+        currentThinkingLevel = command.modelId === "model-b" ? "high" : "medium";
+        respond(command);
+      }, delay);
+    } else if (command.type === "set_thinking_level" && behavior === "selector-delays") {
+      const delay = command.level === "off" ? 180 : 15;
+      setTimeout(() => {
+        currentThinkingLevel = command.level;
+        respond(command);
+      }, delay);
+    } else if (command.type === "prompt" && behavior === "operation-delays") {
+      setTimeout(() => respond(command), 80);
     } else if (command.type === "prompt" && behavior === "prompt-rejected") {
       process.stdout.write(JSON.stringify({ type: "response", id: command.id, command: command.type, success: false,
         error: "prompt rejected" }) + "\n");

@@ -20,6 +20,19 @@ The transport parses strict LF-delimited JSONL through `src/PiDesk.Protocol/RpcP
 
 `src/PiDesk.Protocol/PiSessionService.cs` owns the typed local mapping of commands, responses, events, and lifecycle state consumed by the ViewModel. It validates installed package metadata against Pi 0.84.4 before launch and maps missing required fields to explicit compatibility failures. Startup loads state, models, thinking levels, active-path messages, and usage into a typed snapshot before the ViewModel publishes it. Project replacement prepares and loads a separate candidate process, commits it only when usable, then stops the previous process; failed candidates leave that previous process connected. Process-source checks prevent detached readers from publishing into the replacement session. Prompt responses are treated as authoritative acceptance, while typed queue updates retain unsent steering and follow-up text so abort can restore it even when the `clear_queue` response is ambiguous.
 
+The service serializes state-changing commands through one asynchronous operation gate. Model and thinking requests additionally carry independent monotonic selection versions, a session-intent version, and the committed session generation. Superseded model or thinking requests may finish at the transport boundary, but they cannot publish state; the latest request runs last and returns one atomic typed result containing the confirmed model, its thinking levels, and active thinking level. Starting, replacing, or stopping a session invalidates outstanding selector results before waiting for the operation gate. Extension UI responses deliberately bypass that gate because Pi can require a response to complete the command that currently owns it.
+
+The visible command policy is:
+
+| State | Send/abort/new/project | Model and thinking |
+|---|---|---|
+| Starting, replacing, or stopping | Disabled; repeated UI invocation is ignored | Disabled and outstanding results invalidated |
+| Connected | One UI mutation at a time; direct typed callers are serialized | Enabled; rapid changes use latest-selection-wins |
+| Busy | Send becomes steer and Abort is enabled; new/project remain single-operation commands | Enabled until another session operation starts |
+| Disconnected or faulted | Disabled except project selection for recovery | Disabled |
+
+RPC requests started from an event must not be awaited by the stdout event callback. Post-settle usage refresh is therefore retained as a serialized background task, with failures observed and the task awaited during disposal.
+
 ## Layer responsibilities
 
 Pi's tagged RPC sources are the canonical contract; PiDesk must not create a second independently authoritative protocol specification or domain core. `PiDesk.Protocol` is the adapter boundary: it owns transport, serialization, validation, compatibility checks, and typed state for the protocol surface PiDesk consumes. WinUI code consumes that typed boundary and must not traverse raw protocol JSON or reach into Pi-owned session storage.
@@ -50,4 +63,4 @@ The installed package declares `https://github.com/earendil-works/pi` as its rep
 
 ## Current boundaries
 
-The current implementation is an RPC chat client and does not yet provide full graphical feature parity with Pi's interactive TUI. It supports acceptance-aware prompts, basic steering, abort queue recovery, model and thinking selection, tool status, extension dialogs, atomic new/project session replacement, restored active-path messages, and usage display. Full queue presentation, selector concurrency, session browsing, tree navigation, rich tool output, diffs, Markdown, follow-up controls, and command discovery remain planned work.
+The current implementation is an RPC chat client and does not yet provide full graphical feature parity with Pi's interactive TUI. It supports acceptance-aware prompts, basic steering, abort queue recovery, model and thinking selection, tool status, extension dialogs, atomic new/project session replacement, restored active-path messages, and usage display. Full queue presentation, session browsing, tree navigation, rich tool output, diffs, Markdown, follow-up controls, and command discovery remain planned work.

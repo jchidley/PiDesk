@@ -6,9 +6,9 @@ Work must proceed in milestone order. Visual polish must not outrun protocol cor
 
 ## Current status
 
-**Current milestone:** Milestone 0 — Protocol correctness and lifecycle
+**Current milestone:** Milestone 1 — Faithful agent activity rendering
 
-The Pi 0.84.4 application builds, and the latest recorded real-Pi UI smoke test predates the current protocol changes. Slices 0.1–0.5 are complete. The shared transport is bounded and generation-safe; `PiSessionService` owns typed protocol and lifecycle handling, restores the active message path and usage before publication, prepares a candidate project process before replacing the usable process, confirms prompt acceptance, and retains queue state for abort recovery. The deterministic suite has 32 tests. Six previously recorded semantic mutations were killed across framing, retention, generation, version-gate, and required-field contracts; one recorded survivor exposed an unreachable large-single-chunk fixture path rather than a contract gap.
+Milestone 0 is complete against Pi 0.84.4. The shared transport is bounded and generation-safe; `PiSessionService` owns typed protocol and lifecycle handling, atomic snapshots, candidate project replacement, prompt acceptance, queue recovery, serialized state-changing commands, and generation-safe latest-selection-wins selectors. The deterministic suite has 37 tests, and the current 16-scenario real-Pi UI smoke covers startup, rapid selector changes, prompt/settle, abort, new session, project replacement, accessibility identifiers, and clean parent/child shutdown. Six previously recorded semantic mutations were killed across framing, retention, generation, version-gate, and required-field contracts; one recorded survivor exposed an unreachable large-single-chunk fixture path rather than a contract gap.
 
 | Slice | Status | Evidence |
 |---|---|---|
@@ -17,7 +17,7 @@ The Pi 0.84.4 application builds, and the latest recorded real-Pi UI smoke test 
 | 0.3 Typed session service | Complete | Typed command/response/event coverage, pre-launch Pi 0.84.4 validation, explicit lifecycle tests, and no raw protocol traversal in UI code. |
 | 0.4 Atomic startup and session replacement | Complete | Typed message restoration, atomic snapshot application, cancelled-session preservation, candidate load failure recovery, and candidate-before-current-stop process tests. |
 | 0.5 Prompt, queue, and abort correctness | Complete | Pending/accepted/failed prompt state, failed-prompt composer recovery, typed queue updates, delivery-order abort restoration, and ambiguous clear-timeout recovery tests. |
-| 0.6 Selector and command concurrency | Next | Serialize selectors and define command concurrency policy. |
+| 0.6 Selector and command concurrency | Complete | Serialized mutation gate, selection/session versions, atomic selector results, delayed-response and replacement tests, explicit UI command policy, and real-Pi rapid-selection/abort smoke evidence. |
 
 A milestone is complete only when its listed automated evidence passes and the relevant architecture or development documentation has been updated.
 
@@ -148,7 +148,7 @@ Implement the following slices in order. Each slice must leave all earlier tests
 
 ### Milestone 0 acceptance
 
-Milestone 0 is complete when all six slices pass in one automated run, the analyzer build remains warning-free, and a real-Pi UI smoke test confirms startup, prompt, abort, new session, project replacement, and clean shutdown. The evidence must name the tested Pi version and retain no prompt content or credentials.
+Completed against Pi 0.84.4: all six slices pass in the 37-test deterministic suite, the x64 analyzer build is warning-free, and the 16-scenario real-Pi UI smoke confirms startup, prompt, abort, new session, project replacement, and clean shutdown. Retained evidence names no prompt content or credentials.
 
 ## Milestone 1 — Faithful agent activity rendering
 

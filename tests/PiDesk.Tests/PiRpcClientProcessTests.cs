@@ -183,7 +183,7 @@ public sealed class PiRpcClientProcessTests
     [Fact]
     public async Task RequestTimeoutRemovesPendingRequestAndDoesNotHangShutdown()
     {
-        await using var client = CreateClient("timeout", timeout: TimeSpan.FromMilliseconds(100));
+        await using var client = CreateClient("timeout", timeout: TimeSpan.FromSeconds(1));
         await client.StartAsync(Directory.GetCurrentDirectory());
 
         await Assert.ThrowsAsync<TimeoutException>(() => client.SendAsync(Prompt()));

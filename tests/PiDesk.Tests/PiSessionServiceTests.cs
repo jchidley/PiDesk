@@ -378,6 +378,147 @@ public sealed class PiSessionServiceTests
         }
     }
 
+    [Fact]
+    public async Task RapidModelSelectionsApplyOnlyTheLatestModelAndItsThinkingState()
+    {
+        var logPath = Path.Combine(Path.GetTempPath(), $"pidesk-selector-model-{Guid.NewGuid():N}.log");
+        try
+        {
+            await using var session = new PiSessionService(CreateRpc("selector-delays", logPath), SupportedRuntime);
+            await session.StartAsync(Directory.GetCurrentDirectory());
+
+            var first = session.SelectModelAsync("test", "model-a");
+            await Task.Delay(25);
+            var latest = session.SelectModelAsync("test", "model-b");
+
+            Assert.Null(await first);
+            var update = Assert.IsType<PiSelectorUpdate>(await latest);
+            Assert.Equal("model-b", update.Model?.Id);
+            Assert.Equal(["off", "high"], update.ThinkingLevels);
+            Assert.Equal("high", update.ThinkingLevel);
+
+            var state = (await session.GetSnapshotAsync()).State;
+            Assert.Equal("model-b", state.Model?.Id);
+            Assert.Equal("high", state.ThinkingLevel);
+        }
+        finally
+        {
+            File.Delete(logPath);
+        }
+    }
+
+    [Fact]
+    public async Task ThinkingSelectionDoesNotSuppressTheCurrentModelsLevelRefresh()
+    {
+        var logPath = Path.Combine(Path.GetTempPath(), $"pidesk-selector-cross-{Guid.NewGuid():N}.log");
+        try
+        {
+            await using var session = new PiSessionService(CreateRpc("selector-delays", logPath), SupportedRuntime);
+            await session.StartAsync(Directory.GetCurrentDirectory());
+
+            var model = session.SelectModelAsync("test", "model-a");
+            await Task.Delay(25);
+            var thinking = session.SelectThinkingLevelAsync("high");
+
+            var modelUpdate = Assert.IsType<PiSelectorUpdate>(await model);
+            Assert.Equal("model-a", modelUpdate.Model?.Id);
+            Assert.Equal(["off", "medium"], modelUpdate.ThinkingLevels);
+            Assert.Equal("high", Assert.IsType<PiSelectorUpdate>(await thinking).ThinkingLevel);
+        }
+        finally
+        {
+            File.Delete(logPath);
+        }
+    }
+
+    [Fact]
+    public async Task RapidThinkingSelectionsApplyOnlyTheLatestLevel()
+    {
+        var logPath = Path.Combine(Path.GetTempPath(), $"pidesk-selector-thinking-{Guid.NewGuid():N}.log");
+        try
+        {
+            await using var session = new PiSessionService(CreateRpc("selector-delays", logPath), SupportedRuntime);
+            await session.StartAsync(Directory.GetCurrentDirectory());
+
+            var first = session.SelectThinkingLevelAsync("off");
+            await Task.Delay(25);
+            var latest = session.SelectThinkingLevelAsync("high");
+
+            Assert.Null(await first);
+            var update = Assert.IsType<PiSelectorUpdate>(await latest);
+            Assert.Equal("high", update.ThinkingLevel);
+            Assert.Equal("high", (await session.GetSnapshotAsync()).State.ThinkingLevel);
+        }
+        finally
+        {
+            File.Delete(logPath);
+        }
+    }
+
+    [Fact]
+    public async Task ProjectReplacementInvalidatesAnInFlightSelectorCompletion()
+    {
+        var logPath = Path.Combine(Path.GetTempPath(), $"pidesk-selector-replace-{Guid.NewGuid():N}.log");
+        try
+        {
+            var behaviors = new Queue<string>(["selector-delays", "normal"]);
+            await using var session = new PiSessionService(
+                () => CreateRpc(behaviors.Dequeue(), logPath), SupportedRuntime);
+            var original = await session.StartAsync(Directory.GetCurrentDirectory());
+
+            var selector = session.SelectModelAsync("test", "model-a");
+            await Task.Delay(25);
+            var replacement = session.StartAsync(Directory.GetCurrentDirectory());
+
+            Assert.Null(await selector);
+            var snapshot = await replacement;
+            Assert.True(snapshot.SessionGeneration > original.SessionGeneration);
+            Assert.Equal("model", snapshot.State.Model?.Id);
+        }
+        finally
+        {
+            File.Delete(logPath);
+        }
+    }
+
+    [Fact]
+    public async Task RepeatedMutatingOperationsAreSerializedWithoutDeadlock()
+    {
+        var logPath = Path.Combine(Path.GetTempPath(), $"pidesk-operation-policy-{Guid.NewGuid():N}.log");
+        try
+        {
+            var behaviors = new Queue<string>(["operation-delays", "normal", "normal"]);
+            await using var session = new PiSessionService(
+                () => CreateRpc(behaviors.Dequeue(), logPath), SupportedRuntime);
+            await session.StartAsync(Directory.GetCurrentDirectory());
+
+            var operations = new Task[]
+            {
+                session.PromptAsync("one", steer: false),
+                session.PromptAsync("two", steer: false),
+                session.ClearQueueAndAbortAsync(),
+                session.ClearQueueAndAbortAsync(),
+                session.NewSessionAsync(),
+                session.NewSessionAsync(),
+                session.StartAsync(Directory.GetCurrentDirectory()),
+                session.StartAsync(Directory.GetCurrentDirectory()),
+            };
+
+            await Task.WhenAll(operations).WaitAsync(TimeSpan.FromSeconds(10));
+
+            var records = await File.ReadAllLinesAsync(logPath);
+            Assert.Equal(2, records.Count(line => line.StartsWith("command prompt ", StringComparison.Ordinal)));
+            Assert.Equal(2, records.Count(line => line.StartsWith("command abort ", StringComparison.Ordinal)));
+            Assert.Equal(2, records.Count(line => line.StartsWith("command new_session ", StringComparison.Ordinal)));
+            Assert.Equal(3, records.Count(line => line.StartsWith("start ", StringComparison.Ordinal)));
+            Assert.Equal(PiSessionLifecycleState.Connected, session.LifecycleState);
+        }
+        finally
+        {
+            File.Delete(logPath);
+        }
+    }
+
     private static PiRuntimeInfo SupportedRuntime() =>
         new("node.exe", "fake.js", PiSessionService.SupportedPiVersion);
 

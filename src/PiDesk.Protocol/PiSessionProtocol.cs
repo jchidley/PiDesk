@@ -42,7 +42,14 @@ public sealed record PiSessionSnapshot(
     IReadOnlyList<PiModelInfo> Models,
     IReadOnlyList<string> ThinkingLevels,
     IReadOnlyList<PiConversationItem> Messages,
-    PiSessionStats Stats);
+    PiSessionStats Stats,
+    long SessionGeneration = 0);
+
+public sealed record PiSelectorUpdate(
+    long SessionGeneration,
+    PiModelInfo? Model,
+    IReadOnlyList<string> ThinkingLevels,
+    string ThinkingLevel);
 
 public sealed record PiSessionReplacement(bool Cancelled, PiSessionSnapshot? Snapshot);
 public sealed record PiPromptReceipt(bool Accepted);

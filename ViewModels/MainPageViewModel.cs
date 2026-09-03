@@ -13,6 +13,12 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private readonly PiSessionService _session = new();
     private ChatMessage? _streamingMessage;
     private bool _syncingSelectors;
+    private long _visibleSessionGeneration;
+    private long _modelSelectionVersion;
+    private long _thinkingSelectionVersion;
+    private ModelOption? _confirmedModel;
+    private string? _confirmedThinkingLevel;
+    private Task _statsRefreshTask = Task.CompletedTask;
 
     public MainPageViewModel(DispatcherQueue dispatcher)
     {
@@ -29,6 +35,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     public bool IsEmpty => Messages.Count == 0;
     public string SendButtonText => IsStreaming ? "Queue" : "Send";
+    public bool CanChangeSelectors => IsConnected && !IsSessionOperationInProgress;
+    public bool CanChangeThinking => CanChangeSelectors && !IsModelSelectionInProgress;
+    public bool CanChooseProject => !IsSessionOperationInProgress;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SendCommand))]
@@ -55,6 +64,12 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     public partial bool IsStreaming { get; set; }
 
     [ObservableProperty]
+    public partial bool IsSessionOperationInProgress { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsModelSelectionInProgress { get; set; }
+
+    [ObservableProperty]
     public partial bool HasError { get; set; }
 
     [ObservableProperty]
@@ -69,29 +84,25 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     partial void OnIsStreamingChanged(bool value)
     {
         OnPropertyChanged(nameof(SendButtonText));
+        NotifyCommandStates();
         StatusText = value ? "Pi is working…" : IsConnected ? "Ready" : "Pi is not connected";
     }
 
-    partial void OnSelectedModelChanged(ModelOption? value)
-    {
-        if (!_syncingSelectors && value is not null && IsConnected)
-        {
-            _ = ChangeModelAsync(value);
-        }
-    }
+    partial void OnIsConnectedChanged(bool value) => NotifyInteractionStateChanged();
 
-    partial void OnSelectedThinkingLevelChanged(string? value)
-    {
-        if (!_syncingSelectors && value is not null && IsConnected)
-        {
-            _ = ChangeThinkingLevelAsync(value);
-        }
-    }
+    partial void OnIsSessionOperationInProgressChanged(bool value) => NotifyInteractionStateChanged();
+
+    partial void OnIsModelSelectionInProgressChanged(bool value) => OnPropertyChanged(nameof(CanChangeThinking));
 
     public async Task StartAsync() => await RestartAsync(WorkingDirectory);
 
     public async Task RestartAsync(string workingDirectory)
     {
+        if (!TryBeginSessionOperation())
+        {
+            return;
+        }
+
         var hadUsableSession = IsConnected;
         HasError = false;
         StatusText = hadUsableSession ? "Preparing project…" : "Starting Pi…";
@@ -109,14 +120,24 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             IsConnected = hadUsableSession;
             ShowError(ex.Message);
         }
+        finally
+        {
+            IsSessionOperationInProgress = false;
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanSend))]
     private async Task SendAsync()
     {
+        if (!TryBeginSessionOperation())
+        {
+            return;
+        }
+
         var text = PromptText.Trim();
         if (text.Length == 0)
         {
+            IsSessionOperationInProgress = false;
             return;
         }
 
@@ -147,36 +168,62 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             PromptText = PiComposerRecovery.Restore(PromptText, [text]);
             ShowError(ex.Message);
         }
+        finally
+        {
+            IsSessionOperationInProgress = false;
+        }
     }
 
-    private bool CanSend() => IsConnected && !string.IsNullOrWhiteSpace(PromptText);
+    private bool CanSend() => CanChangeSelectors && !string.IsNullOrWhiteSpace(PromptText);
 
     [RelayCommand(CanExecute = nameof(CanAbort))]
     private async Task AbortAsync()
     {
-        var result = await _session.ClearQueueAndAbortAsync();
-        var restoredCount = result.ClearedQueue.InDeliveryOrder.Count();
-        PromptText = PiComposerRecovery.Restore(PromptText, result.ClearedQueue.InDeliveryOrder);
-
-        if (result.Succeeded)
+        if (!TryBeginSessionOperation())
         {
-            StatusText = restoredCount == 0
-                ? "Stopping Pi…"
-                : $"Stopping Pi… Restored {restoredCount} queued message{(restoredCount == 1 ? string.Empty : "s")}";
             return;
         }
 
-        var errors = new[] { result.ClearQueueError, result.AbortError }
-            .Where(error => error is not null)
-            .Select(error => error!.Message);
-        ShowError(string.Join(" ", errors));
+        try
+        {
+            var result = await _session.ClearQueueAndAbortAsync();
+            var restoredCount = result.ClearedQueue.InDeliveryOrder.Count();
+            PromptText = PiComposerRecovery.Restore(PromptText, result.ClearedQueue.InDeliveryOrder);
+
+            if (result.Succeeded)
+            {
+                var restored = $"Restored {restoredCount} queued message{(restoredCount == 1 ? string.Empty : "s")}";
+                StatusText = IsStreaming
+                    ? restoredCount == 0 ? "Stopping Pi…" : $"Stopping Pi… {restored}"
+                    : restoredCount == 0 ? "Ready" : $"Ready · {restored}";
+                return;
+            }
+
+            var errors = new[] { result.ClearQueueError, result.AbortError }
+                .Where(error => error is not null)
+                .Select(error => error!.Message);
+            ShowError(string.Join(" ", errors));
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex.Message);
+        }
+        finally
+        {
+            IsSessionOperationInProgress = false;
+        }
     }
 
-    private bool CanAbort() => IsStreaming;
+    private bool CanAbort() => IsStreaming && CanChangeSelectors;
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanStartNewSession))]
     private async Task NewSessionAsync()
     {
+        if (!TryBeginSessionOperation())
+        {
+            return;
+        }
+
         try
         {
             var replacement = await _session.NewSessionAsync();
@@ -194,10 +241,17 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         {
             ShowError(ex.Message);
         }
+        finally
+        {
+            IsSessionOperationInProgress = false;
+        }
     }
+
+    private bool CanStartNewSession() => CanChangeSelectors;
 
     private void ApplySnapshot(PiSessionSnapshot snapshot)
     {
+        _visibleSessionGeneration = snapshot.SessionGeneration;
         _syncingSelectors = true;
         try
         {
@@ -216,6 +270,8 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 ThinkingLevels.Add(level);
             }
             SelectedThinkingLevel = snapshot.State.ThinkingLevel;
+            _confirmedModel = SelectedModel;
+            _confirmedThinkingLevel = SelectedThinkingLevel;
         }
         finally
         {
@@ -254,46 +310,127 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         return summary;
     }
 
-    private async Task ChangeModelAsync(ModelOption model)
+    public async Task ChangeModelAsync(ModelOption? model)
     {
+        if (_syncingSelectors || model is null || !CanChangeSelectors)
+        {
+            return;
+        }
+
+        var selectionVersion = ++_modelSelectionVersion;
+        IsModelSelectionInProgress = true;
         try
         {
             StatusText = "Switching model…";
-            await _session.SetModelAsync(model.Provider, model.Id);
-            await RefreshThinkingLevelsAsync();
+            var update = await _session.SelectModelAsync(model.Provider, model.Id);
+            if (update is null || update.SessionGeneration != _visibleSessionGeneration)
+            {
+                RestoreConfirmedModel(selectionVersion);
+                return;
+            }
+
+            ApplySelectorUpdate(update, replaceThinkingLevels: true);
             StatusText = "Ready";
         }
         catch (Exception ex)
         {
+            RestoreConfirmedModel(selectionVersion);
             ShowError(ex.Message);
+        }
+        finally
+        {
+            if (selectionVersion == _modelSelectionVersion)
+            {
+                IsModelSelectionInProgress = false;
+            }
         }
     }
 
-    private async Task ChangeThinkingLevelAsync(string level)
+    public async Task ChangeThinkingLevelAsync(string? level)
     {
+        if (_syncingSelectors || level is null || !CanChangeThinking)
+        {
+            return;
+        }
+
+        var selectionVersion = ++_thinkingSelectionVersion;
         try
         {
-            await _session.SetThinkingLevelAsync(level);
-            StatusText = $"Thinking: {level}";
+            var update = await _session.SelectThinkingLevelAsync(level);
+            if (update is null || update.SessionGeneration != _visibleSessionGeneration)
+            {
+                RestoreConfirmedThinkingLevel(selectionVersion);
+                return;
+            }
+
+            ApplySelectorUpdate(update, replaceThinkingLevels: false);
+            StatusText = $"Thinking: {update.ThinkingLevel}";
         }
         catch (Exception ex)
         {
+            RestoreConfirmedThinkingLevel(selectionVersion);
             ShowError(ex.Message);
         }
     }
 
-    private async Task RefreshThinkingLevelsAsync()
+    private void ApplySelectorUpdate(PiSelectorUpdate update, bool replaceThinkingLevels)
     {
-        var levels = await _session.GetThinkingLevelsAsync();
         _syncingSelectors = true;
         try
         {
-            ThinkingLevels.Clear();
-            foreach (var level in levels)
+            if (update.Model is { } current)
             {
-                ThinkingLevels.Add(level);
+                SelectedModel = Models.FirstOrDefault(model =>
+                    model.Provider == current.Provider && model.Id == current.Id);
             }
-            SelectedThinkingLevel = ThinkingLevels.FirstOrDefault();
+
+            if (replaceThinkingLevels)
+            {
+                ThinkingLevels.Clear();
+                foreach (var level in update.ThinkingLevels)
+                {
+                    ThinkingLevels.Add(level);
+                }
+            }
+            SelectedThinkingLevel = update.ThinkingLevel;
+            _confirmedModel = SelectedModel;
+            _confirmedThinkingLevel = SelectedThinkingLevel;
+        }
+        finally
+        {
+            _syncingSelectors = false;
+        }
+    }
+
+    private void RestoreConfirmedModel(long selectionVersion)
+    {
+        if (selectionVersion != _modelSelectionVersion)
+        {
+            return;
+        }
+
+        _syncingSelectors = true;
+        try
+        {
+            SelectedModel = _confirmedModel;
+        }
+        finally
+        {
+            _syncingSelectors = false;
+        }
+    }
+
+    private void RestoreConfirmedThinkingLevel(long selectionVersion)
+    {
+        if (selectionVersion != _thinkingSelectionVersion)
+        {
+            return;
+        }
+
+        _syncingSelectors = true;
+        try
+        {
+            SelectedThinkingLevel = _confirmedThinkingLevel;
         }
         finally
         {
@@ -329,7 +466,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
                 case AgentSettledEvent:
                     IsStreaming = false;
                     _streamingMessage = null;
-                    _ = RefreshStatsAsync();
+                    _statsRefreshTask = RefreshStatsAfterAsync(_statsRefreshTask, _visibleSessionGeneration);
                     break;
                 case AssistantTextDeltaEvent update:
                     _streamingMessage ??= AddAssistantMessage();
@@ -390,14 +527,18 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private async Task RefreshStatsAsync()
+    private async Task RefreshStatsAfterAsync(Task previousRefresh, long generation)
     {
         try
         {
+            await previousRefresh;
             var stats = await _session.GetStatsAsync();
             await RunOnUiAsync(() =>
             {
-                UsageSummary = FormatUsage(stats);
+                if (generation == _visibleSessionGeneration)
+                {
+                    UsageSummary = FormatUsage(stats);
+                }
                 return Task.CompletedTask;
             });
         }
@@ -405,7 +546,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         {
             await RunOnUiAsync(() =>
             {
-                ShowError(ex.Message);
+                if (generation == _visibleSessionGeneration)
+                {
+                    ShowError(ex.Message);
+                }
                 return Task.CompletedTask;
             });
         }
@@ -437,6 +581,31 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         StatusText = "Action needed";
     }
 
+    private bool TryBeginSessionOperation()
+    {
+        if (IsSessionOperationInProgress)
+        {
+            return false;
+        }
+        IsSessionOperationInProgress = true;
+        return true;
+    }
+
+    private void NotifyInteractionStateChanged()
+    {
+        OnPropertyChanged(nameof(CanChangeSelectors));
+        OnPropertyChanged(nameof(CanChangeThinking));
+        OnPropertyChanged(nameof(CanChooseProject));
+        NotifyCommandStates();
+    }
+
+    private void NotifyCommandStates()
+    {
+        SendCommand.NotifyCanExecuteChanged();
+        AbortCommand.NotifyCanExecuteChanged();
+        NewSessionCommand.NotifyCanExecuteChanged();
+    }
+
     private void NotifyMessagesChanged()
     {
         OnPropertyChanged(nameof(IsEmpty));
@@ -450,7 +619,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         }
 
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        _dispatcher.TryEnqueue(async () =>
+        if (!_dispatcher.TryEnqueue(async () =>
         {
             try
             {
@@ -461,7 +630,10 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             {
                 completion.SetException(ex);
             }
-        });
+        }))
+        {
+            completion.SetException(new InvalidOperationException("The PiDesk window is no longer available."));
+        }
         return completion.Task;
     }
 
@@ -473,7 +645,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         }
 
         var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _dispatcher.TryEnqueue(async () =>
+        if (!_dispatcher.TryEnqueue(async () =>
         {
             try
             {
@@ -483,9 +655,16 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
             {
                 completion.SetException(ex);
             }
-        });
+        }))
+        {
+            completion.SetException(new InvalidOperationException("The PiDesk window is no longer available."));
+        }
         return completion.Task;
     }
 
-    public async ValueTask DisposeAsync() => await _session.DisposeAsync();
+    public async ValueTask DisposeAsync()
+    {
+        await _statsRefreshTask;
+        await _session.DisposeAsync();
+    }
 }
