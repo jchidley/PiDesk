@@ -1,6 +1,6 @@
 # Design review
 
-This review records the current quality and completeness of PiDesk against Pi 0.85.0 and the upstream Microsoft WinUI development skills. It is a point-in-time assessment, not the implementation plan; implementation status and planned work belong in [the improvement plan](improvement-plan.md).
+This review records the current quality and completeness of PiDesk against Pi 0.85.0 and the upstream Microsoft WinUI development skills. It is a point-in-time assessment, not the implementation plan; implementation status and planned work belong in [the improvement plan](improvement-plan.md), while the detailed interactive-mode comparison is in [the Pi TUI capability gap review](tui-gap-review.md).
 
 The latest implementation review verified a warning-free analyzer build, 72 deterministic protocol/process tests, a focused 4-scenario backend UI run, a 17-scenario fake-RPC Milestone 1 UI acceptance run, and the earlier 16-scenario real-Pi UI smoke test against Pi 0.84.4. The shared production library combines bounded transport handling with a typed session service, explicit lifecycle states, restored session snapshots, non-destructive candidate project startup, prompt and queue recovery, serialized mutations, and generation-safe latest-selection-wins selectors. Focused mutation trials from the preceding slices killed six semantic defects across exact record-size handling, CRLF normalization, stale-generation suppression, newest-stderr retention, version validation, and required response fields. One recorded survivor identified a fixture-unreachable large-single-chunk path rather than a missing externally exercised contract.
 
@@ -35,11 +35,11 @@ Pi RPC exposes switching, entries, read-only tree inspection, fork, clone, namin
 
 ### Session workflows remain incomplete
 
-Milestone 1 activity rendering now has retained deterministic UI evidence. The next major product gap is session browsing and branching: switch, fork, clone, naming, export, and tree navigation still require the Milestone 2 entry investigation and implementation.
+Milestone 1 activity rendering now has retained deterministic UI evidence. The Milestone 2 entry investigation is complete. Typed switch, fork, clone, naming, export, and read-only tree work can proceed now; session discovery and active-branch navigation remain blocked on the scoped upstream commands.
 
 ## Other findings
 
-- The fixed header columns, now including the 160-pixel backend selector column, have no responsive breakpoints and can clip at narrow widths; Milestone 4 must establish and test a supported minimum width.
+- The fixed header columns, now including the 160-pixel backend selector column, have no responsive breakpoints and can clip at narrow widths; Milestone 5 must establish and test a supported minimum width.
 - Full queue state is retained for abort recovery but is not yet displayed.
 - Transport diagnostics are retained in memory and publicly readable but are not yet exposed through a user-copyable UI.
 - The non-dismissible error bar lacks a retry or reconnect action.

@@ -15,20 +15,23 @@ The command remains attached while PiDesk is open, so shell elapsed time include
 
 ## Current capabilities
 
-- Streaming assistant responses and basic tool activity
+- Streaming assistant text, thinking, tool arguments/results, diffs, retries, compaction, and errors
+- Expandable selectable detail, safe Markdown, and bounded large-output presentation
 - Project-folder selection with cwd-bound persistent Pi sessions
+- Atomic selection of native Windows or discovered WSL Pi backends
 - Model and thinking-level selection
-- Steering messages while Pi is working
+- Acceptance-aware prompts, steering while Pi is working, abort, and queue recovery
 - Stop, new-session, cost, and context controls
 - Pi extension dialogs for select, confirm, input, and editor requests
 - Keyboard access, UI Automation identifiers, and system theme resources
 
-PiDesk is currently a functional RPC client but does not yet provide full graphical feature parity with Pi's TUI. It complements rather than deprecates Pi's upstream CLI and TUI. Session browsing, branching, rich tool output, diffs, Markdown, visible queues, responsive layouts, and release packaging are tracked in the improvement plan.
+PiDesk is currently a functional RPC client but does not yet provide full graphical feature parity with Pi's TUI. It complements rather than deprecates Pi's upstream CLI and TUI. Session browsing and branching, visible steering/follow-up queues, images, command completion, complete extension UI, operational controls, responsive layouts, and release packaging are tracked in the improvement plan.
 
 ## Documentation
 
 - [Architecture](docs/architecture.md)
 - [Current design review](docs/design-review.md)
+- [Pi TUI capability gap review](docs/tui-gap-review.md)
 - [Improvement plan](docs/improvement-plan.md)
 - [Development and testing](docs/development.md)
 

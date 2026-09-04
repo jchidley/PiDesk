@@ -1,12 +1,12 @@
 # Improvement plan
 
-This is the canonical ordered plan for turning PiDesk from a functional RPC chat client into a credible graphical alternative to Pi's TUI. It defines implementation order and milestone acceptance; the point-in-time assessment remains in [the design review](design-review.md).
+This is the canonical ordered plan for turning PiDesk from a functional RPC chat client into a credible graphical alternative to Pi's TUI. It defines implementation order and milestone acceptance; the point-in-time quality assessment remains in [the design review](design-review.md), and the evidence behind the parity scope is recorded in [the Pi TUI capability gap review](tui-gap-review.md).
 
 Work must proceed in milestone order. Visual polish must not outrun protocol correctness, recoverability, and observability.
 
 ## Current status
 
-**Current milestone:** Milestone 2 — Sessions and branching (minimum upstream RPC delta scoped; blocked until listing and navigation ship upstream)
+**Current milestone:** Milestone 2 — Sessions and branching (typed adapters and current-session actions can proceed; session browsing and active-branch navigation remain blocked on the scoped upstream RPC delta)
 
 Milestones 0 and 1 are complete and remain validated against Pi 0.85.0. The shared transport is bounded and generation-safe; `PiSessionService` owns typed protocol and lifecycle handling, atomic snapshots, candidate project replacement, prompt acceptance, queue recovery, serialized state-changing commands, and generation-safe latest-selection-wins selectors. Conversation rendering reduces only typed RPC activity into distinct user, assistant, thinking, tool, diff, retry, compaction, and error presentation models. It correlates interleaved argument streams, restores thinking, tool arguments/results, and diffs from typed `get_messages`, exposes expandable selectable detail surfaces with bounded automation summaries, and defers collapsed detail creation so a 10,000-line output remains one responsive control. Markdown headings, lists, emphasis, inline code, and fenced code are rendered under a documented side-effect-free link/image/HTML policy. The deterministic protocol suite has 72 tests. PiDesk now also supports atomic selection between the default native Windows Pi installation and discovered WSL distributions, with side-effect-free runtime/version preflight, distribution-aware path translation, direct shell-free RPC launch, and confirmed-state selector rollback. A retained 17-scenario fake-RPC UI run covers keyboard expansion, streaming and final tool states, edit diffs, failed tools, selection/copy, bounded automation names, 10,000-line output and Stop responsiveness, safe Markdown, and clean shutdown; the earlier retained 16-scenario real-Pi smoke continues to cover startup, selectors, prompt/settle, abort, new session, project replacement, and parent/child shutdown.
 
@@ -23,7 +23,7 @@ A milestone is complete only when its listed automated evidence passes and the r
 
 ## Product boundary
 
-PiDesk will remain a native Windows front end over Pi's supported RPC mode. It will not fork Pi, duplicate its agent loop, manage provider credentials independently, or reproduce the terminal UI pixel-for-pixel.
+PiDesk will remain a native Windows front end over Pi's supported RPC mode. It will not fork Pi, duplicate its agent loop, manage provider credentials independently, or reproduce the terminal UI pixel-for-pixel. Parity means supporting the same useful work and supervision outcomes through native Windows interaction where the supported Pi boundary permits it; terminal mechanics are not a compatibility target.
 
 PiDesk owns graphical presentation and the atomic translation of confirmed backend state into visible UI state. Pi continues to own models, credentials, the agent loop, tools, extensions, queues, and persistent sessions.
 
@@ -173,7 +173,7 @@ Completed against Pi 0.84.4: all six slices pass in the 37-test deterministic su
 
 ### Milestone 1 acceptance
 
-Completed originally with 45 passing deterministic protocol tests (the current cumulative suite has 64), a warning-free x64 analyzer build, and the retained 17-scenario deterministic UI Automation evidence in `docs/evidence/milestone1-ui-test-results.json`. The UI fixture launches a Debug-only fake Pi RPC child and reaches the presentation exclusively through `PiSessionService`, typed events, typed `get_messages`, and `PiActivityReducer`. No model request, Pi session-file access, or ViewModel-synthesized backend outcome is used.
+Completed originally with 45 passing deterministic protocol tests (the current cumulative suite has 72), a warning-free x64 analyzer build, and the retained 17-scenario deterministic UI Automation evidence in `docs/evidence/milestone1-ui-test-results.json`. The UI fixture launches a Debug-only fake Pi RPC child and reaches the presentation exclusively through `PiSessionService`, typed events, typed `get_messages`, and `PiActivityReducer`. No model request, Pi session-file access, or ViewModel-synthesized backend outcome is used.
 
 ## Milestone 2 — Sessions and branching
 
@@ -215,40 +215,87 @@ Tests must set up and remove their own temporary project and session directories
 
 ### Implementation
 
-- Add current-session naming, HTML export, clone, fork, and tree navigation.
-- Provide a session-open flow using `switch_session`.
+Implement the milestone in bounded slices so work that uses the existing RPC contract does not wait for the browser blockers:
+
+#### 2.1 Typed session operations
+
+- Add typed models and service operations for `get_fork_messages`, `get_entries`, `get_tree`, `set_session_name`, `export_html`, `switch_session`, `fork`, and `clone`.
+- Parse only the fields needed by visible workflows while retaining stable entry IDs, parent IDs, labels, label timestamps, and the authoritative `leafId`.
+- Load and publish the complete authoritative snapshot after every non-cancelled operation that changes the active session.
+
+#### 2.2 Current-session actions
+
+- Add current-session naming with confirmed-name refresh from `get_state`.
+- Add HTML export with a native save picker, explicit overwrite confirmation, and confirmation of Pi's returned destination.
+- Add fork selection from `get_fork_messages` and clone at the current leaf.
+- Provide a known-path `switch_session` operation for deterministic integration and future browser use; do not expose an unsafe arbitrary session-file parser.
 - Reuse Milestone 0's atomic replacement and cancellation behavior for every operation.
+
+#### 2.3 Session browser and branch navigation
+
+- Land or adopt upstream `list_sessions` and `navigate_tree` with the entry-investigation contract above.
+- Build a searchable current-project session browser using only `list_sessions`; support useful metadata, sort, and named-session filtering without reading Pi storage.
+- Build a native branch tree from `get_tree`, preserving abandoned branches and labels, then navigate through `navigate_tree` with no-summary, default-summary, and custom-focus choices.
+- Treat arbitrary label editing, session deletion, import, and sharing as separate future upstream decisions; do not expand the minimum RPC patch to include them.
 - Display loading, cancellation, conflict, and failure states without replacing the active conversation prematurely.
 
 **Acceptance criteria**
 
-- A saved session can be opened and its active path rendered correctly.
-- Fork and clone create exactly the backend session Pi reports and update the UI atomically.
-- Tree navigation preserves abandoned branches and labels.
+- Typed tests cover every consumed command shape, cancellation result, required field, and stale-generation outcome.
 - Naming and export report the confirmed session and destination and do not overwrite an existing file without explicit confirmation.
+- Fork and clone create exactly the backend session Pi reports, preserve returned editor text where applicable, and update the UI atomically.
+- A saved session can be discovered through Pi, opened, and have its active path rendered correctly.
+- Tree navigation preserves abandoned branches and labels and applies returned editor text only after a non-cancelled authoritative replacement.
 - Integration tests use temporary session storage and leave the user's real sessions untouched.
 
-## Milestone 3 — Input, queues, commands, and extension UI
+## Milestone 3 — Input, queues, commands, images, and extension UI
 
-**Objective:** reach practical interaction parity with Pi's editor and queue model.
+**Objective:** reach practical interaction parity with Pi's editor, queue model, direct shell workflow, and documented RPC extension UI.
 
-- Display steering and follow-up queues from `queue_update`.
+- Display steering and follow-up queues from `queue_update`, including order and delivery mode.
 - Let the user explicitly choose steer versus follow-up while Pi is running.
-- Add image attachment support with type, size, and read-failure validation.
-- Discover skills, prompts, and extension commands with `get_commands` and provide slash-command completion.
-- Implement fire-and-forget extension requests for widgets, title, status, and editor text without collapsing all status keys into one string.
+- Restore queued text to the composer without data loss. Use `clear_queue` for whole-queue restoration; record one-message dequeue as an upstream gap rather than guessing Pi's queue policy.
+- Add image attachment support for prompt, steer, and follow-up with picker, clipboard paste, drag/drop, MIME type, size, decode, read-failure, preview, and selected-model capability validation.
+- Add bounded prompt history and native project-file/path insertion without pretending that TUI `@` expansion is an RPC command.
+- Discover skills, prompts, and extension commands with `get_commands` and provide slash-command completion. Built-in TUI-only commands must map to real PiDesk actions or be omitted.
+- Add direct shell execution through typed `bash`, `bash_execution_update`, and `abort_bash` operations with explicit inclusion-in-next-prompt semantics.
+- Complete fire-and-forget extension requests for keyed statuses, widgets, title, and editor text. Retain `statusKey`, `widgetKey`, lines, and placement in the typed boundary.
 - Isolate extension request lifetimes by process/session generation.
 - Handle malformed, simultaneous, duplicate, late, cancelled, and timed-out extension requests without blocking the stdout reader.
 
 **Acceptance criteria**
 
-- Queue contents, order, and delivery mode always match the latest backend update.
-- Abort restores unsent queued text to the composer.
+- Queue contents, order, category, and delivery mode always match the latest backend update.
+- Abort and explicit queue retrieval restore all affected text and attachments without changing delivery order.
+- Prompt, steer, and follow-up send the intended text and images exactly once.
 - Command completion reflects the selected project's discovered commands and invalidates on project replacement.
-- A deterministic extension fixture exercises select, confirm, input, editor, notify, status, widget, title, and editor-text requests.
+- Direct shell output streams into one bounded visible operation, can be aborted, and is represented correctly in the next authoritative snapshot.
+- A deterministic extension fixture exercises select, confirm, input, editor, notify, multiple keyed statuses, widgets in both placements, title, and editor-text requests.
 - Dialog timeout, project replacement, and a late extension response cannot deadlock event processing or update the wrong session.
 
-## Milestone 4 — Responsive and accessible Windows design
+## Milestone 4 — Operational supervision and desktop productivity
+
+**Objective:** expose the controls and information needed to manage a long-running Pi task without returning to the terminal.
+
+- Expand typed `get_state` and `get_session_stats` models to include session file and ID, message and pending counts, steering/follow-up modes, auto-compaction state, token/cache breakdowns, tool counts, context tokens, context window, and cost.
+- Add a session-information surface that distinguishes lifetime totals from current-context usage.
+- Add manual compaction with optional focus instructions, auto-compaction control, auto-retry control, and abort-retry while preserving Pi as the authority.
+- Add copy-last-assistant and accelerator-driven model/thinking cycling.
+- Add transcript search, previous/next user-prompt navigation, jump to latest, and global expand/collapse commands for thinking and tool output.
+- Add explicit reconnect and copy-diagnostics actions for disconnected or faulted sessions.
+- Add a candidate-launch trust choice between Pi's saved/default policy, one-run approval, and one-run rejection. Map only explicit approval or rejection to Pi's supported `--approve` or `--no-approve` option; do not inspect or modify Pi's trust store.
+- Show the command/resource visibility that `get_commands` can prove; do not claim a complete loaded-resource inventory when RPC cannot provide one.
+
+**Acceptance criteria**
+
+- Detailed statistics match the authoritative RPC values before and after prompting, tool usage, and compaction.
+- Manual compaction, retry policy, and abort-retry remain responsive and expose success, cancellation, retry, and failure states.
+- Transcript search and navigation work during streaming without disrupting follow-latest behavior or selection.
+- Keyboard users can cycle model/thinking, copy the latest response, search the transcript, expand/collapse details, and reconnect.
+- A project trust choice affects only the candidate launch, is explicit in UI Automation state, and a cancelled or failed candidate preserves the previous session.
+- Diagnostics are bounded, copyable, and contain no prompt, model output, or credential material by default.
+
+## Milestone 5 — Responsive and accessible Windows design
 
 **Objective:** make the application robust across window sizes, themes, and input modes.
 
@@ -266,7 +313,7 @@ Tests must set up and remove their own temporary project and session directories
 - Core startup, prompt, stop, recovery, and session flows pass in Light, Dark, and a Contrast theme.
 - All core flows are operable by keyboard alone with visible focus.
 
-## Milestone 5 — Distribution and compatibility
+## Milestone 6 — Distribution and compatibility
 
 **Objective:** make installation, upgrades, and Pi compatibility predictable.
 
@@ -295,6 +342,7 @@ Every milestone extends rather than replaces prior evidence.
 - state reducers and generation guards
 - command concurrency and cancellation
 - rendering model transformation
+- session trees, queue state, images, commands, extension widgets, detailed statistics, and operational controls as their milestones introduce them
 
 ### Process integration tests
 
@@ -303,17 +351,20 @@ Every milestone extends rather than replaces prior evidence.
 - process and session replacement, including candidate-start failure and stale-generation output
 - fake-child PID cleanup and caller cancellation
 - maximum stdout-record and stderr-buffer boundaries
-- prompt, steering, follow-up, abort, and queue restoration
-- tool success, tool failure, retry, and compaction
-- extension request lifecycle
-- session cancellation, switch, fork, clone, and tree navigation
+- prompt, steering, follow-up, images, abort, delivery modes, and queue restoration
+- direct shell streaming, cancellation, and next-prompt context
+- tool success, tool failure, retry, manual/automatic compaction, and detailed statistics
+- extension dialog and fire-and-forget request lifecycle
+- session cancellation, switch, fork, clone, listing, and tree navigation
+- project trust launch choices without reading Pi's trust store
 
 ### UI Automation tests
 
 - narrow, default, and wide windows
 - Light, Dark, and High Contrast
 - keyboard-only and accessibility paths
-- disconnected and recovery states
+- queues, attachments, extension widgets, transcript search/navigation, and operational controls
+- disconnected, trust, and recovery states
 - one bounded real-model smoke test where deterministic fixtures cannot prove integration
 
 Tests must use deterministic protocol fixtures by default. Real provider requests are reserved for the smallest end-to-end smoke test because they incur cost and can vary independently of PiDesk.
@@ -328,7 +379,8 @@ Diagnostics must include timestamps, command types, correlation IDs, process/ses
 
 These do not block the current milestone unless promoted by an entry investigation:
 
-- Propose a Pi RPC command for listing sessions rather than coupling clients to session-directory internals.
+- Land the scoped `list_sessions` and `navigate_tree` commands rather than coupling clients to session-directory internals.
+- Investigate one-message queue dequeue, independent tree-label mutation, session deletion/rename, import/share, loaded-resource reporting, and safe runtime settings APIs only when a concrete PiDesk workflow requires them.
 - Propose a curated AI/coding-agent conversation sample for `winapp find-ui`.
 - Extend `microsoft/win-dev-skills` session reporting to support Pi JSONL sessions.
 - Add WinUI review guidance for DispatcherQueue initialization, same-channel RPC deadlocks, async selector races, and subprocess shutdown.
