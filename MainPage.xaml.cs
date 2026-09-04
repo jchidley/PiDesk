@@ -67,6 +67,12 @@ public sealed partial class MainPage : Page
         }
     }
 
+    private async void BackendCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        await ViewModel.ChangeBackendAsync(e.AddedItems.OfType<PiBackend>().FirstOrDefault());
+        PromptBox.Focus(FocusState.Programmatic);
+    }
+
     private async void ModelCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         await ViewModel.ChangeModelAsync(e.AddedItems.OfType<Models.ModelOption>().FirstOrDefault());

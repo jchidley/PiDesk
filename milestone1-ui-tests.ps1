@@ -7,9 +7,14 @@ $ErrorActionPreference = 'Stop'
 $pass = 0
 $fail = 0
 $results = @()
-$mainHwnd = (winapp ui list-windows -a $AppPid --json 2>$null | ConvertFrom-Json |
-    Where-Object { $_.title -eq 'PiDesk' -and $_.className -eq 'WinUIDesktopWin32WindowClass' } |
-    Select-Object -First 1).hwnd
+$mainHwnd = $null
+$windowDeadline = (Get-Date).AddSeconds(15)
+do {
+    $mainHwnd = (winapp ui list-windows -a $AppPid --json 2>$null | ConvertFrom-Json |
+        Where-Object { $_.title -eq 'PiDesk' -and $_.className -eq 'WinUIDesktopWin32WindowClass' } |
+        Select-Object -First 1).hwnd
+    if (-not $mainHwnd) { Start-Sleep -Milliseconds 250 }
+} while (-not $mainHwnd -and (Get-Date) -lt $windowDeadline)
 if (-not $mainHwnd) { throw 'PiDesk main window was not found.' }
 
 function Test-UI {

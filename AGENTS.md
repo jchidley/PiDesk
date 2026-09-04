@@ -16,7 +16,7 @@ Run commands from the repository root in PowerShell 7. `BuildAndRun.ps1` remains
 
 - `docs/architecture.md` defines the current process boundary.
 - `docs/improvement-plan.md` is the canonical ordered plan.
-- Pi RPC behaviour is owned by the tagged upstream sources linked from `docs/architecture.md`; the current baseline is Pi 0.84.4.
+- Pi RPC behaviour is owned by the tagged upstream sources linked from `docs/architecture.md`; the current baseline is Pi 0.85.0.
 - Update the relevant document when a change alters architecture, supported behaviour, or milestone acceptance criteria.
 
 ## Boundaries

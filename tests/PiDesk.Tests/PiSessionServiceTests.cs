@@ -158,14 +158,35 @@ public sealed class PiSessionServiceTests
             throw new InvalidOperationException("must not launch");
         }, TimeSpan.FromSeconds(1));
         await using var session = new PiSessionService(rpc,
-            () => new PiRuntimeInfo("node.exe", "fake.js", "99.0.0"));
+            () => new PiRuntimeInfo("node.exe", "fake.js", "0.84.4", PiBackend.Windows));
 
         var exception = await Assert.ThrowsAsync<NotSupportedException>(() =>
             session.StartAsync(Directory.GetCurrentDirectory()));
 
         Assert.False(launched);
         Assert.Equal(PiSessionLifecycleState.Faulted, session.LifecycleState);
-        Assert.Contains(PiSessionService.SupportedPiVersion, exception.Message);
+        Assert.Contains("Windows backend", exception.Message);
+        Assert.Contains(PiSessionService.MinimumSupportedPiVersion, exception.Message);
+    }
+
+    [Fact]
+    public async Task NewerPatchVersionPassesAuditedVersionRange()
+    {
+        var logPath = Path.Combine(Path.GetTempPath(), $"pidesk-newer-version-{Guid.NewGuid():N}.log");
+        try
+        {
+            var rpc = CreateRpc("normal", logPath);
+            await using var session = new PiSessionService(rpc,
+                () => new PiRuntimeInfo("node.exe", "fake.js", "0.85.1", PiBackend.Windows));
+
+            await session.StartAsync(Directory.GetCurrentDirectory());
+
+            Assert.Equal(PiSessionLifecycleState.Connected, session.LifecycleState);
+        }
+        finally
+        {
+            File.Delete(logPath);
+        }
     }
 
     [Fact]
@@ -176,7 +197,7 @@ public sealed class PiSessionServiceTests
         {
             var rpc = CreateRpc("lifecycle-events", logPath);
             await using var session = new PiSessionService(rpc,
-                () => new PiRuntimeInfo("node.exe", "fake.js", PiSessionService.SupportedPiVersion));
+                () => new PiRuntimeInfo("node.exe", "fake.js", PiSessionService.MinimumSupportedPiVersion));
             var states = new List<PiSessionLifecycleState>();
             var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             session.LifecycleChanged += states.Add;
@@ -211,7 +232,7 @@ public sealed class PiSessionServiceTests
         {
             var rpc = CreateRpc("normal", logPath);
             await using var session = new PiSessionService(rpc,
-                () => new PiRuntimeInfo("node.exe", "fake.js", PiSessionService.SupportedPiVersion));
+                () => new PiRuntimeInfo("node.exe", "fake.js", PiSessionService.MinimumSupportedPiVersion));
 
             await session.StartAsync(Directory.GetCurrentDirectory());
             var snapshot = await session.GetSnapshotAsync();
@@ -600,7 +621,7 @@ public sealed class PiSessionServiceTests
     }
 
     private static PiRuntimeInfo SupportedRuntime() =>
-        new("node.exe", "fake.js", PiSessionService.SupportedPiVersion);
+        new("node.exe", "fake.js", PiSessionService.MinimumSupportedPiVersion);
 
     private static PiRpcClient CreateRpc(string behavior, string lifecyclePath, TimeSpan? requestTimeout = null)
     {

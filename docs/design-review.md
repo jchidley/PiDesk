@@ -1,8 +1,8 @@
 # Design review
 
-This review records the current quality and completeness of PiDesk against Pi 0.84.4 and the upstream Microsoft WinUI development skills. It is a point-in-time assessment, not the implementation plan; implementation status and planned work belong in [the improvement plan](improvement-plan.md).
+This review records the current quality and completeness of PiDesk against Pi 0.85.0 and the upstream Microsoft WinUI development skills. It is a point-in-time assessment, not the implementation plan; implementation status and planned work belong in [the improvement plan](improvement-plan.md).
 
-The latest implementation review verified a warning-free analyzer build, 45 deterministic protocol/process tests, a 17-scenario fake-RPC Milestone 1 UI acceptance run, and the earlier 16-scenario real-Pi UI smoke test against Pi 0.84.4. The shared production library combines bounded transport handling with a typed session service, explicit lifecycle states, restored session snapshots, non-destructive candidate project startup, prompt and queue recovery, serialized mutations, and generation-safe latest-selection-wins selectors. Focused mutation trials from the preceding slices killed six semantic defects across exact record-size handling, CRLF normalization, stale-generation suppression, newest-stderr retention, version validation, and required response fields. One recorded survivor identified a fixture-unreachable large-single-chunk path rather than a missing externally exercised contract.
+The latest implementation review verified a warning-free analyzer build, 72 deterministic protocol/process tests, a focused 4-scenario backend UI run, a 17-scenario fake-RPC Milestone 1 UI acceptance run, and the earlier 16-scenario real-Pi UI smoke test against Pi 0.84.4. The shared production library combines bounded transport handling with a typed session service, explicit lifecycle states, restored session snapshots, non-destructive candidate project startup, prompt and queue recovery, serialized mutations, and generation-safe latest-selection-wins selectors. Focused mutation trials from the preceding slices killed six semantic defects across exact record-size handling, CRLF normalization, stale-generation suppression, newest-stderr retention, version validation, and required response fields. One recorded survivor identified a fixture-unreachable large-single-chunk path rather than a missing externally exercised contract.
 
 ## Verdict
 
@@ -25,13 +25,13 @@ PiDesk is a sound native WinUI proof of concept and a useful Pi RPC chat client.
 - Startup and session replacement restore the active message path and usage before applying visible state; failed candidate projects leave the prior session usable.
 - Prompt cards expose pending and failed submission state, rejected text returns to the composer, and abort restores cleared steering then follow-up text before any newer draft.
 - Typed Pi RPC activity now renders thinking, correlated tool arguments/updates/results, edit diffs, retries, compaction, and errors through expandable selectable surfaces with bounded automation names.
-- The analyzer build completes with no warnings; 45 deterministic protocol/process tests pass; the 17-scenario fake-RPC UI suite covers activity rendering, keyboard/copy access, safe Markdown, and large-output responsiveness; and the earlier real-Pi suite passes 16 lifecycle scenarios.
+- The analyzer build completes with no warnings; 72 deterministic protocol/process tests pass; the 17-scenario fake-RPC UI suite covers activity rendering, keyboard/copy access, safe Markdown, and large-output responsiveness; and the earlier real-Pi suite passes 16 lifecycle scenarios.
 
 ## High-priority findings
 
 ### Session functionality is too limited
 
-Pi RPC exposes switching, entries, tree navigation, fork, clone, naming, and export. PiDesk currently exposes only atomic New session and project replacement, although both now restore the active message path.
+Pi RPC exposes switching, entries, read-only tree inspection, fork, clone, naming, and export, but not the `navigate_tree` mutation needed to select another branch. PiDesk currently exposes only atomic New session and project replacement, although both now restore the active message path.
 
 ### Session workflows remain incomplete
 
@@ -39,7 +39,7 @@ Milestone 1 activity rendering now has retained deterministic UI evidence. The n
 
 ## Other findings
 
-- The fixed header columns have no responsive breakpoints and can clip at narrow widths.
+- The fixed header columns, now including the 160-pixel backend selector column, have no responsive breakpoints and can clip at narrow widths; Milestone 4 must establish and test a supported minimum width.
 - Full queue state is retained for abort recovery but is not yet displayed.
 - Transport diagnostics are retained in memory and publicly readable but are not yet exposed through a user-copyable UI.
 - The non-dismissible error bar lacks a retry or reconnect action.
@@ -66,13 +66,13 @@ The local `winui-design`, `winui-dev-workflow`, `winui-code-review`, and `winui-
 
 ## Upstream references
 
-### Pi 0.84.4
+### Pi 0.85.0
 
-- [RPC documentation](https://github.com/earendil-works/pi/blob/v0.84.4/packages/coding-agent/docs/rpc.md)
-- [RPC mode](https://github.com/earendil-works/pi/blob/v0.84.4/packages/coding-agent/src/modes/rpc/rpc-mode.ts)
-- [RPC client](https://github.com/earendil-works/pi/blob/v0.84.4/packages/coding-agent/src/modes/rpc/rpc-client.ts)
-- [Protocol types](https://github.com/earendil-works/pi/blob/v0.84.4/packages/coding-agent/src/modes/rpc/rpc-types.ts)
-- [JSONL framing](https://github.com/earendil-works/pi/blob/v0.84.4/packages/coding-agent/src/modes/rpc/jsonl.ts)
+- [RPC documentation](https://github.com/earendil-works/pi/blob/v0.85.0/packages/coding-agent/docs/rpc.md)
+- [RPC mode](https://github.com/earendil-works/pi/blob/v0.85.0/packages/coding-agent/src/modes/rpc/rpc-mode.ts)
+- [RPC client](https://github.com/earendil-works/pi/blob/v0.85.0/packages/coding-agent/src/modes/rpc/rpc-client.ts)
+- [Protocol types](https://github.com/earendil-works/pi/blob/v0.85.0/packages/coding-agent/src/modes/rpc/rpc-types.ts)
+- [JSONL framing](https://github.com/earendil-works/pi/blob/v0.85.0/packages/coding-agent/src/modes/rpc/jsonl.ts)
 
 ### Windows development sources
 

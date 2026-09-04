@@ -3,44 +3,39 @@ using System.Text.Json;
 
 namespace PiDesk.Services;
 
-internal sealed record PiRuntimeInfo(string NodePath, string CliPath, string Version)
+internal sealed record PiRuntimeInfo(
+    string NodePath,
+    string CliPath,
+    string Version,
+    PiBackend? Backend = null,
+    IReadOnlyList<string>? AdditionalArguments = null)
 {
     public ProcessStartInfo CreateStartInfo(string workingDirectory)
     {
-        var startInfo = new ProcessStartInfo
+        if (Backend is { Kind: PiBackendKind.Wsl, Distribution: { } distribution })
         {
-            FileName = NodePath,
-            WorkingDirectory = workingDirectory,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
+            return PiBackendProvider.CreateWslRpcStartInfo(distribution, workingDirectory, NodePath, CliPath);
+        }
+
+        var startInfo = PiBackendProvider.RedirectedStartInfo(NodePath);
+        startInfo.WorkingDirectory = workingDirectory;
         startInfo.ArgumentList.Add(CliPath);
         startInfo.ArgumentList.Add("--mode");
         startInfo.ArgumentList.Add("rpc");
+        foreach (var argument in AdditionalArguments ?? [])
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
         return startInfo;
     }
 }
 
 internal static class PiRuntimeResolver
 {
-    public static PiRuntimeInfo Resolve()
-    {
-#if DEBUG
-        var testScript = Environment.GetEnvironmentVariable("PIDESK_UI_TEST_RPC_SCRIPT");
-        if (!string.IsNullOrWhiteSpace(testScript))
-        {
-            var fullPath = Path.GetFullPath(testScript);
-            if (!File.Exists(fullPath))
-            {
-                throw new FileNotFoundException("The PiDesk UI-test RPC fixture was not found.", fullPath);
-            }
+    public static PiRuntimeInfo Resolve() => ResolveWindows();
 
-            return new PiRuntimeInfo("node.exe", fullPath, PiSessionService.SupportedPiVersion);
-        }
-#endif
+    public static PiRuntimeInfo ResolveWindows()
+    {
         var path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
         foreach (var directoryValue in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
@@ -68,7 +63,7 @@ internal static class PiRuntimeResolver
                 }
 
                 var adjacentNode = Path.Combine(directory, "node.exe");
-                return new PiRuntimeInfo(File.Exists(adjacentNode) ? adjacentNode : "node.exe", cliPath, version);
+                return new PiRuntimeInfo(File.Exists(adjacentNode) ? adjacentNode : "node.exe", cliPath, version, PiBackend.Windows);
             }
             catch (ArgumentException)
             {

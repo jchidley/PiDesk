@@ -13,11 +13,13 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     private readonly PiSessionService _session = new();
     private readonly PiActivityReducer _activityReducer = new();
     private bool _syncingSelectors;
+    private bool _syncingBackend;
     private long _visibleSessionGeneration;
     private long _modelSelectionVersion;
     private long _thinkingSelectionVersion;
     private ModelOption? _confirmedModel;
     private string? _confirmedThinkingLevel;
+    private PiBackend _confirmedBackend = PiBackend.Windows;
     private Task _statsRefreshTask = Task.CompletedTask;
 
     public MainPageViewModel(DispatcherQueue dispatcher)
@@ -29,6 +31,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     }
 
     public ObservableCollection<ChatMessage> Messages { get; } = [];
+    public ObservableCollection<PiBackend> Backends { get; } = [];
     public ObservableCollection<ModelOption> Models { get; } = [];
     public ObservableCollection<string> ThinkingLevels { get; } = [];
     public Func<ExtensionUiRequest, Task<ExtensionUiResponse>>? ExtensionUiHandler { get; set; }
@@ -38,6 +41,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     public bool CanChangeSelectors => IsConnected && !IsSessionOperationInProgress;
     public bool CanChangeThinking => CanChangeSelectors && !IsModelSelectionInProgress;
     public bool CanChooseProject => !IsSessionOperationInProgress;
+    public bool CanChangeBackend => !IsSessionOperationInProgress && Backends.Count > 1;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SendCommand))]
@@ -76,6 +80,9 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
     public partial string ErrorText { get; set; } = string.Empty;
 
     [ObservableProperty]
+    public partial PiBackend? SelectedBackend { get; set; }
+
+    [ObservableProperty]
     public partial ModelOption? SelectedModel { get; set; }
 
     [ObservableProperty]
@@ -94,9 +101,33 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
     partial void OnIsModelSelectionInProgressChanged(bool value) => OnPropertyChanged(nameof(CanChangeThinking));
 
-    public async Task StartAsync() => await RestartAsync(WorkingDirectory);
+    public async Task StartAsync()
+    {
+        try
+        {
+            var discovered = await _session.DiscoverBackendsAsync();
+            Backends.Clear();
+            foreach (var backend in discovered)
+            {
+                Backends.Add(backend);
+            }
+            _syncingBackend = true;
+            SelectedBackend = Backends.FirstOrDefault(item => item.Kind == PiBackendKind.Windows) ?? PiBackend.Windows;
+            _confirmedBackend = SelectedBackend;
+            _syncingBackend = false;
+            OnPropertyChanged(nameof(CanChangeBackend));
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Backend discovery failed: {ex.Message}");
+            return;
+        }
+        await RestartAsync(WorkingDirectory, _confirmedBackend);
+    }
 
-    public async Task RestartAsync(string workingDirectory)
+    public Task RestartAsync(string workingDirectory) => RestartAsync(workingDirectory, _confirmedBackend);
+
+    private async Task RestartAsync(string workingDirectory, PiBackend backend)
     {
         if (!TryBeginSessionOperation())
         {
@@ -109,20 +140,46 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
 
         try
         {
-            var snapshot = await _session.StartAsync(workingDirectory);
+            var snapshot = await _session.StartAsync(backend, workingDirectory);
             ApplySnapshot(snapshot);
             WorkingDirectory = workingDirectory;
+            _confirmedBackend = backend;
+            SetSelectedBackend(backend);
             IsConnected = true;
             StatusText = IsStreaming ? "Pi is working…" : "Ready";
         }
         catch (Exception ex)
         {
             IsConnected = hadUsableSession;
+            SetSelectedBackend(_confirmedBackend);
             ShowError(ex.Message);
         }
         finally
         {
             IsSessionOperationInProgress = false;
+        }
+    }
+
+    public async Task ChangeBackendAsync(PiBackend? backend)
+    {
+        if (_syncingBackend || backend is null || backend == _confirmedBackend || !CanChangeBackend)
+        {
+            return;
+        }
+
+        await RestartAsync(WorkingDirectory, backend);
+    }
+
+    private void SetSelectedBackend(PiBackend backend)
+    {
+        _syncingBackend = true;
+        try
+        {
+            SelectedBackend = Backends.FirstOrDefault(item => item.Id == backend.Id) ?? backend;
+        }
+        finally
+        {
+            _syncingBackend = false;
         }
     }
 
@@ -592,6 +649,7 @@ public partial class MainPageViewModel : ObservableObject, IAsyncDisposable
         OnPropertyChanged(nameof(CanChangeSelectors));
         OnPropertyChanged(nameof(CanChangeThinking));
         OnPropertyChanged(nameof(CanChooseProject));
+        OnPropertyChanged(nameof(CanChangeBackend));
         NotifyCommandStates();
     }
 

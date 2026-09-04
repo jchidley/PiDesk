@@ -3,6 +3,8 @@ const readline = require("readline");
 let isStreaming = false;
 let promptCount = 0;
 let runVersion = 0;
+const backendArgument = process.argv.indexOf("--fixture-backend");
+const backendName = backendArgument >= 0 ? process.argv[backendArgument + 1] : "Windows";
 
 function write(record) {
   process.stdout.write(JSON.stringify(record) + "\n");
@@ -71,7 +73,7 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
   const command = JSON.parse(line);
   switch (command.type) {
     case "get_state":
-      respond(command, { model: { provider: "fixture", id: "deterministic", name: "Deterministic fixture" }, thinkingLevel: "medium", sessionId: "ui-fixture", sessionName: "Milestone 1 fixture", isStreaming });
+      respond(command, { model: { provider: "fixture", id: "deterministic", name: "Deterministic fixture" }, thinkingLevel: "medium", sessionId: `ui-fixture-${backendName}`, sessionName: `${backendName} fixture`, isStreaming });
       break;
     case "get_available_models":
       respond(command, { models: [{ provider: "fixture", id: "deterministic", name: "Deterministic fixture" }] });
@@ -80,7 +82,7 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
       respond(command, { levels: ["off", "medium"] });
       break;
     case "get_messages":
-      respond(command, { messages: [{ role: "assistant", content: [{ type: "text", text: markdown }], stopReason: "stop" }] });
+      respond(command, { messages: [{ role: "assistant", content: [{ type: "text", text: backendName === "Windows" ? markdown : `CONFIRMED-BACKEND: ${backendName}` }], stopReason: "stop" }] });
       break;
     case "get_session_stats":
       respond(command, { cost: 0, contextUsage: { percent: 1 } });

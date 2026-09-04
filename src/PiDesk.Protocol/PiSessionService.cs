@@ -5,9 +5,10 @@ namespace PiDesk.Services;
 
 public sealed class PiSessionService : IAsyncDisposable
 {
-    public const string SupportedPiVersion = "0.84.4";
-    private readonly Func<PiRpcClient> _rpcFactory;
-    private readonly Func<PiRuntimeInfo> _runtimeResolver;
+    public const string MinimumSupportedPiVersion = "0.85.0";
+    public const string ExclusiveMaximumSupportedPiVersion = "0.86.0";
+    private readonly Func<PiRuntimeInfo, PiRpcClient> _rpcFactory;
+    private readonly IPiBackendProvider _backendProvider;
     private readonly SemaphoreSlim _operationLock = new(1, 1);
     private PiRpcClient? _rpc;
     private Func<JsonElement, Task>? _eventHandler;
@@ -19,19 +20,26 @@ public sealed class PiSessionService : IAsyncDisposable
     private long _modelSelectorVersion;
     private long _thinkingSelectorVersion;
 
-    public PiSessionService() : this(() => new PiRpcClient(), PiRuntimeResolver.Resolve)
+    public PiSessionService() : this(
+        runtime => new PiRpcClient(runtime.CreateStartInfo, TimeSpan.FromSeconds(30)),
+        new PiBackendProvider())
     {
     }
 
     internal PiSessionService(PiRpcClient rpc, Func<PiRuntimeInfo> runtimeResolver)
-        : this(() => rpc, runtimeResolver)
+        : this(_ => rpc, new DelegateBackendProvider(runtimeResolver))
     {
     }
 
     internal PiSessionService(Func<PiRpcClient> rpcFactory, Func<PiRuntimeInfo> runtimeResolver)
+        : this(_ => rpcFactory(), new DelegateBackendProvider(runtimeResolver))
+    {
+    }
+
+    internal PiSessionService(Func<PiRuntimeInfo, PiRpcClient> rpcFactory, IPiBackendProvider backendProvider)
     {
         _rpcFactory = rpcFactory;
-        _runtimeResolver = runtimeResolver;
+        _backendProvider = backendProvider;
     }
 
     public event Func<PiSessionEvent, Task>? EventReceived;
@@ -40,8 +48,18 @@ public sealed class PiSessionService : IAsyncDisposable
     public PiSessionLifecycleState LifecycleState { get; private set; } = PiSessionLifecycleState.Disconnected;
     public IReadOnlyList<RpcDiagnostic> Diagnostics => _rpc?.Diagnostics ?? [];
     public long SessionGeneration => Volatile.Read(ref _sessionGeneration);
+    public PiBackend? CurrentBackend { get; private set; }
 
-    public async Task<PiSessionSnapshot> StartAsync(string workingDirectory, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<PiBackend>> DiscoverBackendsAsync(CancellationToken cancellationToken = default) =>
+        _backendProvider.DiscoverAsync(cancellationToken);
+
+    public Task<PiSessionSnapshot> StartAsync(string workingDirectory, CancellationToken cancellationToken = default) =>
+        StartAsync(PiBackend.Windows, workingDirectory, cancellationToken);
+
+    public async Task<PiSessionSnapshot> StartAsync(
+        PiBackend backend,
+        string workingDirectory,
+        CancellationToken cancellationToken = default)
     {
         InvalidateSessionSelectors();
         await _operationLock.WaitAsync(cancellationToken);
@@ -52,11 +70,12 @@ public sealed class PiSessionService : IAsyncDisposable
             PiRpcClient? candidate = null;
             try
             {
-                ValidateRuntime();
-                candidate = _rpcFactory();
-                await candidate.StartAsync(workingDirectory, cancellationToken);
+                var prepared = await _backendProvider.PrepareAsync(backend, workingDirectory, cancellationToken);
+                ValidateRuntime(prepared.Runtime);
+                candidate = _rpcFactory(prepared.Runtime);
+                await candidate.StartAsync(prepared.WorkingDirectory, cancellationToken);
                 var snapshot = await LoadSnapshotAsync(candidate, cancellationToken);
-                return await CommitCandidateAsync(candidate, snapshot);
+                return await CommitCandidateAsync(candidate, snapshot, prepared.Backend);
             }
             catch
             {
@@ -86,6 +105,7 @@ public sealed class PiSessionService : IAsyncDisposable
             {
                 await rpc.DisposeAsync();
             }
+            CurrentBackend = null;
             SetLifecycle(PiSessionLifecycleState.Disconnected);
         }
         finally
@@ -322,15 +342,29 @@ public sealed class PiSessionService : IAsyncDisposable
         await GetRpc().SendNotificationAsync(command, cancellationToken);
     }
 
-    private void ValidateRuntime()
+    private static void ValidateRuntime(PiRuntimeInfo runtime)
     {
-        var runtime = _runtimeResolver();
-        if (!string.Equals(runtime.Version, SupportedPiVersion, StringComparison.Ordinal))
+        if (!Version.TryParse(runtime.Version, out var installedVersion))
         {
             throw new NotSupportedException(
-                $"Pi {runtime.Version} is not supported. PiDesk currently requires Pi {SupportedPiVersion}.");
+                $"{BackendDescription(runtime.Backend)} reports an invalid Pi version '{runtime.Version}'. Reinstall Pi in that backend and try again.");
+        }
+
+        var minimumVersion = Version.Parse(MinimumSupportedPiVersion);
+        var exclusiveMaximumVersion = Version.Parse(ExclusiveMaximumSupportedPiVersion);
+        if (installedVersion < minimumVersion || installedVersion >= exclusiveMaximumVersion)
+        {
+            throw new NotSupportedException(
+                $"{BackendDescription(runtime.Backend)} has Pi {runtime.Version}, which is unsupported. PiDesk supports Pi {MinimumSupportedPiVersion} or later in the audited 0.85.x line.");
         }
     }
+
+    private static string BackendDescription(PiBackend? backend) => backend switch
+    {
+        { Kind: PiBackendKind.Wsl, Distribution: { } distribution } => $"WSL distribution '{distribution}'",
+        { Kind: PiBackendKind.Windows } => "The Windows backend",
+        _ => "The selected backend",
+    };
 
     private static async Task<PiSessionSnapshot> LoadSnapshotAsync(PiRpcClient rpc, CancellationToken cancellationToken)
     {
@@ -342,10 +376,14 @@ public sealed class PiSessionService : IAsyncDisposable
         return new PiSessionSnapshot(state, models, levels, messages, stats);
     }
 
-    private async Task<PiSessionSnapshot> CommitCandidateAsync(PiRpcClient candidate, PiSessionSnapshot snapshot)
+    private async Task<PiSessionSnapshot> CommitCandidateAsync(
+        PiRpcClient candidate,
+        PiSessionSnapshot snapshot,
+        PiBackend backend)
     {
         var previous = DetachCurrentRpc();
         AttachRpc(candidate);
+        CurrentBackend = backend;
         SetKnownQueue(new PiClearedQueue([], []));
         var generation = Interlocked.Increment(ref _sessionGeneration);
         snapshot = snapshot with { SessionGeneration = generation };
@@ -549,5 +587,17 @@ public sealed class PiSessionService : IAsyncDisposable
     {
         await StopAsync();
         _operationLock.Dispose();
+    }
+
+    private sealed class DelegateBackendProvider(Func<PiRuntimeInfo> runtimeResolver) : IPiBackendProvider
+    {
+        public Task<IReadOnlyList<PiBackend>> DiscoverAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<PiBackend>>([PiBackend.Windows]);
+
+        public Task<PiPreparedBackend> PrepareAsync(
+            PiBackend backend,
+            string projectPath,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new PiPreparedBackend(backend, runtimeResolver(), projectPath));
     }
 }

@@ -37,16 +37,17 @@ public sealed class PiRpcClient : IAsyncDisposable
 
     public async Task StartAsync(string workingDirectory, CancellationToken cancellationToken = default)
     {
-        if (!Directory.Exists(workingDirectory))
+        var startInfo = _startInfoFactory(workingDirectory);
+        if (!string.IsNullOrWhiteSpace(startInfo.WorkingDirectory) && !Directory.Exists(startInfo.WorkingDirectory))
         {
-            throw new DirectoryNotFoundException($"Working folder does not exist: {workingDirectory}");
+            throw new DirectoryNotFoundException($"Working folder does not exist: {startInfo.WorkingDirectory}");
         }
 
         await _lifecycleLock.WaitAsync(cancellationToken);
         try
         {
             await StopCoreAsync();
-            var process = Process.Start(_startInfoFactory(workingDirectory)) ?? throw new InvalidOperationException("Could not start Pi.");
+            var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start Pi.");
             var run = new RunState(process, Interlocked.Increment(ref _nextGeneration));
             _run = run;
             run.OutputReader = ReadOutputAsync(run);

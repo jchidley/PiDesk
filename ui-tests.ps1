@@ -33,9 +33,13 @@ function Get-UIValue([string]$Element) {
     (winapp ui get-value $Element -w $mainHwnd --json 2>$null | ConvertFrom-Json).text
 }
 
-Test-UI 'Pi 0.84.4 connects and becomes ready' {
-    $version = (pi --version).Trim()
-    if ($version -ne '0.84.4') { throw "Expected Pi 0.84.4, found $version" }
+Test-UI 'An audited Pi 0.85.x version connects and becomes ready' {
+    $versionText = (pi --version).Trim()
+    try { $version = [version]$versionText }
+    catch { throw "Pi returned an invalid version: $versionText" }
+    if ($version -lt [version]'0.85.0' -or $version -ge [version]'0.86.0') {
+        throw "Expected an audited Pi 0.85.x version, found $versionText"
+    }
     winapp ui wait-for StatusText -w $mainHwnd --value Ready -t 15000
 }
 Test-UI 'Project picker is available' { winapp ui wait-for FolderButton -w $mainHwnd -t 3000 }
